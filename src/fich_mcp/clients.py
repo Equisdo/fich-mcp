@@ -11,8 +11,10 @@ never collapsed into two:
 """
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .security import FichError, atomic_write
@@ -25,6 +27,30 @@ def _executable():
     if not executable:
         raise FichError("executable_not_found")
     return executable
+
+
+def _claude_desktop_config_path() -> Path:
+    """Claude Desktop's config file for the current platform.
+
+    macOS and Windows use their own per-app config directories; every other
+    platform (Linux, BSD, ...) follows the XDG base directory spec.
+    """
+    if sys.platform == "darwin":
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "Claude"
+            / "claude_desktop_config.json"
+        )
+    if sys.platform == "win32":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(appdata) / "Claude" / "claude_desktop_config.json"
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        / "Claude"
+        / "claude_desktop_config.json"
+    )
 
 
 def configure_claude_code(run=subprocess.run):
@@ -134,7 +160,7 @@ def configure_claude_desktop(config_path=None):
     it is not a JSON object, or if ``mcpServers`` is present but malformed.
     """
     executable = _executable()
-    path = config_path or (Path.home() / ".config" / "Claude" / "claude_desktop_config.json")
+    path = config_path or _claude_desktop_config_path()
 
     if path.exists():
         if path.is_symlink():

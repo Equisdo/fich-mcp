@@ -84,6 +84,17 @@ def test_configure_add(monkeypatch):
     ]
 
 
+def test_configure_claude_desktop_honors_config_path_flag(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr("shutil.which", lambda name: "/bin/" + name)
+    config_path = tmp_path / "custom" / "claude_desktop_config.json"
+
+    assert main(["configure", "claude-desktop", "--config-path", str(config_path)]) == 0
+
+    assert capsys.readouterr().out.strip() == "configured"
+    data = json.loads(config_path.read_text())
+    assert data["mcpServers"]["fich"]["command"] == "/bin/fich-mcp"
+
+
 def test_public_cli_help_hides_internal_rpc_command():
     result = subprocess.run(
         [sys.executable, "-m", "fich_mcp", "--help"], capture_output=True, text=True, check=True

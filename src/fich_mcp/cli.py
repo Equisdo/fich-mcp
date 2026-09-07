@@ -150,6 +150,13 @@ def main(argv=None):
     sync.add_argument("--force-refresh", action="store_true")
     configure = commands.add_parser("configure")
     configure.add_argument("client", choices=["claude", "codex", "claude-desktop", "all"])
+    configure.add_argument(
+        "--config-path",
+        help=(
+            "Override Claude Desktop's config file path (defaults to the platform's "
+            "own location). Ignored for the 'claude' and 'codex' clients."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "serve":
@@ -168,9 +175,15 @@ def main(argv=None):
             elif args.client == "codex":
                 print(configure_codex())
             elif args.client == "claude-desktop":
-                print(configure_claude_desktop())
+                desktop_path = Path(args.config_path) if args.config_path else None
+                print(configure_claude_desktop(desktop_path))
             else:
-                print(json.dumps(configure_all(), ensure_ascii=False, indent=2))
+                desktop_path = Path(args.config_path) if args.config_path else None
+                print(
+                    json.dumps(
+                        configure_all(desktop_path=desktop_path), ensure_ascii=False, indent=2
+                    )
+                )
         elif args.command == "doctor":
             print(json.dumps(doctor(Paths.default()), indent=2))
         elif args.command == "init":

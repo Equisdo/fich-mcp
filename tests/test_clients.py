@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from fich_mcp.clients import (
+    _claude_desktop_config_path,
     configure_all,
     configure_claude_desktop,
     configure_codex,
@@ -127,3 +129,52 @@ def test_configure_all_collects_per_client_status(monkeypatch, tmp_path):
     assert results["claude_code"] == "configured"
     assert results["codex"] == "codex_inspection_failed"
     assert results["claude_desktop"] == "configured"
+
+
+def test_claude_desktop_config_path_macos(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    path = _claude_desktop_config_path()
+
+    assert path == tmp_path / "Library" / "Application Support" / "Claude" / (
+        "claude_desktop_config.json"
+    )
+
+
+def test_claude_desktop_config_path_windows(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+
+    path = _claude_desktop_config_path()
+
+    assert path == tmp_path / "Roaming" / "Claude" / "claude_desktop_config.json"
+
+
+def test_claude_desktop_config_path_windows_without_appdata(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    path = _claude_desktop_config_path()
+
+    assert path == tmp_path / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
+
+
+def test_claude_desktop_config_path_linux_respects_xdg(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    path = _claude_desktop_config_path()
+
+    assert path == tmp_path / "xdg" / "Claude" / "claude_desktop_config.json"
+
+
+def test_claude_desktop_config_path_linux_defaults_to_dot_config(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    path = _claude_desktop_config_path()
+
+    assert path == tmp_path / ".config" / "Claude" / "claude_desktop_config.json"

@@ -1,120 +1,315 @@
-# FICH MCP
+<div align="center">
 
-A local, read-only MCP companion for the FICH Moodle mobile web service. It keeps an account-isolated local cache for selected courses, searchable course material, announcements, assignments, calendar events, and indexed PDFs.
+```
+   ██████╗       ███████╗ ██╗  ██████╗ ██╗  ██╗
+ ██╔════██╗      ██╔════╝ ██║ ██╔════╝ ██║  ██║
+ █████████║█████╗█████╗   ██║ ██║      ███████║
+ ██╔══════╝╚════╝██╔══╝   ██║ ██║      ██╔══██║
+ ╚███████╗       ██║      ██║ ╚██████╗ ██║  ██║
+  ╚══════╝       ╚═╝      ╚═╝  ╚═════╝ ╚═╝  ╚═╝
+```
 
-## Security first
+**e-FICH · Plataforma educativa · MCP**
 
-FICH currently uses **HTTP, not HTTPS**. A network attacker can read or modify credentials and session tokens in transit. Run `fich-mcp init` only from a trusted network after reading and explicitly accepting its warning. This project cannot make HTTP safe.
+Compañero local y de solo lectura para el e-FICH (Moodle de la FICH-UNL), expuesto como servidor
+[MCP](https://modelcontextprotocol.io) para que Claude, ChatGPT/Codex o cualquier cliente MCP puedan
+consultar tus cursos, anuncios, fechas y apuntes.
 
-- Enter credentials **only in the terminal prompt** opened by `fich-mcp init`; never paste a password or token into a chat, an MCP tool argument, a prompt, a shell history entry, or a configuration file.
-- The server is read-only with respect to Moodle. It stores the token in a user-only local configuration file and keeps each user cache separate.
-- Retrieved course text, HTML, PDF excerpts, and rendered images are untrusted material. Your MCP client/model provider may process tool results, so avoid requesting sensitive material unless that is acceptable for the provider you use.
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/protocol-MCP-6f42c1)](https://modelcontextprotocol.io)
+[![Linux · macOS · Windows](https://img.shields.io/badge/plataformas-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-informational)]()
+[![CI](https://github.com/Equisdo/fich-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Equisdo/fich-mcp/actions/workflows/ci.yml)
+[![Licencia MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
 
-## Requirements
+</div>
 
-- Python 3.12+
-- SQLite with FTS5 (included by most Python builds)
-- For PDF rendering/OCR: system **Poppler** (`pdftoppm`) and **Tesseract OCR** with Spanish and English language packs (`spa`, `eng`). These are system dependencies; the package does not depend on the repository's test-only `.tools/` directory.
+---
 
-On Debian/Ubuntu, install the packages through your normal administrator-approved process (typically `poppler-utils`, `tesseract-ocr`, `tesseract-ocr-spa`, and `tesseract-ocr-eng`). Verify them with `fich-mcp doctor`.
+## ⚠️ Seguridad primero
 
-## Isolated installation
+El e-FICH corre sobre **HTTP, no HTTPS**. Cualquiera con acceso a la red puede leer o modificar tus
+credenciales y tu token de sesión en tránsito. Este proyecto **no puede hacer que HTTP sea seguro**;
+solo puede minimizar la exposición. Corré `fich-mcp init` únicamente desde una red de confianza,
+después de leer y aceptar explícitamente esa advertencia.
+
+- Las credenciales se ingresan **solo en el prompt de terminal** que abre `fich-mcp init`: nunca las
+  pegues en un chat, en un argumento de herramienta MCP, ni las dejes en el historial de la shell o en
+  un archivo de configuración.
+- El servidor es de **solo lectura** contra Moodle. El token se guarda en un archivo de configuración
+  local con permisos restringidos al usuario, y cada cuenta tiene su propio cache aislado.
+- El texto, HTML, PDFs e imágenes que se recuperan de tus cursos son material **no confiable**: tu
+  cliente MCP o proveedor de modelo puede procesarlo, así que evitá pedir material sensible si eso no
+  es aceptable para el proveedor que usás.
+
+## Qué hace
+
+- Mantiene un **cache local por cuenta** de las materias que elijas, con seguimiento de cambios.
+- Indexa **PDFs** (texto nativo y, si están Poppler/Tesseract, OCR en español e inglés) para buscar
+  dentro de los apuntes.
+- Expone todo por **MCP** para que tu asistente conteste "¿qué hay para la próxima clase?" sin que
+  vos tengas que entrar al aula virtual.
+
+| Herramienta MCP | Qué devuelve |
+|---|---|
+| `list_courses` | Materias seleccionadas y su estado de sincronización |
+| `get_course_contents` | Secciones, recursos y archivos de una materia |
+| `get_announcements` | Avisos del foro de novedades |
+| `get_upcoming` | Próximos eventos de calendario, con ventana acotada (hasta 366 días) |
+| `get_changes` | Qué cambió desde la última sincronización |
+| `search_content` | Búsqueda de texto completo sobre lo indexado (incluye PDFs) |
+| `read_document` | Contenido citado de un documento puntual (texto o imagen de página) |
+| `sync` | Dispara una sincronización manual |
+
+## Capturas
+
+<!-- Pegá acá las capturas del menú guiado y del selector de materias en docs/assets/ -->
+<p align="center">
+  <img src="docs/assets/menu.png" alt="Menú guiado de fich-mcp" width="45%">
+  <img src="docs/assets/materias.png" alt="Selector de materias" width="45%">
+</p>
+
+## Requisitos
+
+| Dependencia | Para qué | Instalación |
+|---|---|---|
+| Python 3.12+ | Correr el paquete | ver [Instalación](#instalación) |
+| SQLite con FTS5 | Búsqueda de texto completo | incluido en la mayoría de los builds de Python |
+| Poppler (`pdftoppm`) | Renderizar páginas de PDF para OCR | `apt`/`brew`/WSL, ver abajo |
+| Tesseract OCR (`spa`, `eng`) | Extraer texto de PDFs escaneados | `apt`/`brew`/WSL, ver abajo |
+
+Los dos últimos son opcionales: sin ellos, `fich-mcp` sigue funcionando con el texto nativo de los
+PDFs, pero no puede leer páginas escaneadas como imagen. Verificalos en cualquier momento con
+`fich-mcp doctor`.
+
+## Instalación
+
+<details>
+<summary><strong>🐧 Linux</strong></summary>
 
 ```bash
+# Dependencias del sistema (Debian/Ubuntu; ajustá al gestor de paquetes de tu distro)
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv poppler-utils tesseract-ocr \
+    tesseract-ocr-spa tesseract-ocr-eng
+
+git clone https://github.com/Equisdo/fich-mcp.git
+cd fich-mcp
 python3.12 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install .
-fich-mcp --help
+python -m pip install -e .
+
+# Poné el ejecutable del venv en el PATH (una sola vez; ~/.local/bin debe estar en tu PATH)
+ln -sf "$(pwd)/.venv/bin/fich-mcp" ~/.local/bin/fich-mcp
+
+fich-mcp doctor
 ```
 
-For local development and tests:
+</details>
+
+<details>
+<summary><strong>🍎 macOS</strong></summary>
 
 ```bash
-python -m pip install -e '.[dev]'
-python -m pytest -q
-python -m ruff check .
+# Dependencias del sistema vía Homebrew
+brew install python@3.12 poppler tesseract tesseract-lang
+
+git clone https://github.com/Equisdo/fich-mcp.git
+cd fich-mcp
+python3.12 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+
+# Poné el ejecutable del venv en el PATH (una sola vez; ~/.local/bin debe estar en tu PATH)
+ln -sf "$(pwd)/.venv/bin/fich-mcp" ~/.local/bin/fich-mcp
+
+fich-mcp doctor
 ```
 
-## First use and commands
+</details>
 
-```bash
-fich-mcp init                 # terminal-only login; asks you to accept the HTTP risk
-fich-mcp doctor               # local dependency and cached-account diagnostics
-fich-mcp courses --select     # choose accessible courses for this local cache
-fich-mcp sync                 # refresh metadata and resumably index PDFs
-fich-mcp sync --force-ocr     # retry PDF pages using OCR
-fich-mcp serve                # start the stdio MCP server
-fich-mcp tui                  # open the guided menu (scripts/fich-menu.sh)
+<details>
+<summary><strong>🪟 Windows</strong></summary>
+
+El menú guiado (`fich-mcp tui`) es un script de bash, así que la vía recomendada es
+**WSL2** — ahí seguís exactamente los pasos de Linux de arriba.
+
+```powershell
+# Instalar WSL2 (una sola vez, PowerShell como administrador)
+wsl --install -d Ubuntu
 ```
 
-### Guided menu
+Después de reiniciar, abrí la terminal de Ubuntu y seguí la sección **🐧 Linux**.
 
-A single interactive entry point wraps the commands above — session, course selection,
-sync, MCP client registration and diagnostics:
+**Sin WSL2**, el paquete y el CLI (`init`, `doctor`, `courses`, `sync`, `serve`, `configure`) también
+corren en PowerShell nativo — lo único que no tenés es el menú guiado:
+
+```powershell
+git clone https://github.com/Equisdo/fich-mcp.git
+cd fich-mcp
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+
+fich-mcp doctor
+```
+
+Para OCR en Windows nativo instalá Poppler y Tesseract con
+[winget](https://learn.microsoft.com/windows/package-manager/winget/) o
+[Chocolatey](https://chocolatey.org/) y confirmá que queden en el `PATH` con `fich-mcp doctor`.
+
+</details>
+
+## `gum` — la cara linda del menú
+
+`scripts/fich-menu.sh` usa [`gum`](https://github.com/charmbracelet/gum) para los menúes, spinners y
+confirmaciones con color. Si no está instalado, el menú **cae solo a una versión en bash plano** —
+funciona igual, sin la estética. Instalarlo es opcional pero recomendado:
+
+| Sistema | Comando |
+|---|---|
+| macOS / Linux con Homebrew | `brew install gum` |
+| Debian / Ubuntu (apt) | ver bloque abajo |
+| Fedora / RHEL | ver bloque abajo |
+| Arch Linux | `pacman -S gum` |
+| Nix | `nix-env -iA nixpkgs.gum` |
+| Windows (winget) | `winget install charmbracelet.gum` |
+| Windows (Scoop) | `scoop install charm-gum` |
+| Cualquier sistema con Go | `go install charm.land/gum/v2@latest` |
+
+Debian/Ubuntu:
 
 ```bash
-bash scripts/fich-menu.sh
-# or, once fich-mcp is on PATH:
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | \
+    sudo tee /etc/apt/sources.list.d/charm.list
+sudo apt update && sudo apt install gum
+```
+
+Fedora/RHEL:
+
+```bash
+echo '[charm]
+name=Charm
+baseurl=https://repo.charm.sh/yum/
+enabled=1
+gpgcheck=1
+gpgkey=https://repo.charm.sh/yum/gpg.key' | sudo tee /etc/yum.repos.d/charm.repo
+sudo rpm --import https://repo.charm.sh/yum/gpg.key
+sudo yum install gum
+```
+
+Para forzar el menú plano aunque `gum` esté instalado (útil en una terminal sin colores):
+
+```bash
+FICH_MENU_NO_GUM=1 fich-mcp tui
+```
+
+## Primer uso
+
+```bash
+fich-mcp init                 # login solo por terminal; pide aceptar el riesgo de HTTP
+fich-mcp doctor               # diagnóstico de dependencias locales y cuenta cacheada
+fich-mcp courses --select     # elegir qué materias sincronizar
+fich-mcp sync                 # traer metadata e indexar PDFs de forma resumible
+fich-mcp sync --force-ocr     # reintentar páginas de PDF con OCR
+fich-mcp serve                # levantar el servidor MCP por stdio
+fich-mcp tui                  # abrir el menú guiado
+```
+
+### Menú guiado
+
+Un único punto de entrada interactivo para sesión, selección de materias, sincronización, registro de
+clientes MCP y diagnóstico:
+
+```bash
 fich-mcp tui
+# o, corriendo desde el repo sin instalar:
+bash scripts/fich-menu.sh
 ```
 
-It uses [gum](https://github.com/charmbracelet/gum) when it is installed and falls back to a
-plain-bash menu otherwise. The menu never reads your username or password: `init` owns the HTTP
-warning, the consent prompt and the password prompt.
+El menú nunca lee tu usuario ni tu contraseña: eso es responsabilidad exclusiva de `init`, que es
+quien muestra la advertencia de HTTP, pide el consentimiento y pregunta la contraseña.
 
-The MCP server exposes `list_courses`, `get_course_contents`, `get_announcements`, `get_upcoming`, `get_changes`, `search_content`, `read_document`, and `sync`. `get_upcoming` accepts an explicitly bounded window of up to 366 days and reports calendar-window coverage/freshness; a short cached window is not used for a wider request.
+## Conectar un cliente MCP
 
-## Connecting a client
-
-All supported clients talk to `fich-mcp` the same way: as a local **stdio** subprocess, launched
-with `fich-mcp serve`. There is no network listener, no port, and no token to type into any client —
-the FICH credentials stay in the account-isolated cache described below, never in a client config.
-
-`fich-mcp configure` needs the CLI resolvable by name, not just inside `.venv`:
+Todos los clientes soportados hablan con `fich-mcp` de la misma forma: como un subproceso local por
+**stdio**, lanzado con `fich-mcp serve`. No hay puerto ni listener de red, y no hay ningún token que
+tipear en la configuración del cliente — las credenciales de FICH quedan en el cache aislado por
+cuenta, nunca en un archivo de config de cliente.
 
 ```bash
-# after `pip install -e .`, put the venv's executable on PATH once
-ln -sf "$(pwd)/.venv/bin/fich-mcp" ~/.local/bin/fich-mcp   # ~/.local/bin must be on PATH
+fich-mcp configure claude           # Claude Code (alcance de usuario, vía el CLI `claude`)
+fich-mcp configure codex            # ChatGPT desktop + Codex CLI + extensión de Codex para IDE
+                                     #   (comparten ~/.codex/config.toml)
+fich-mcp configure claude-desktop   # Claude Desktop (mergea claude_desktop_config.json)
+fich-mcp configure all              # los tres de una; que falle uno no bloquea a los demás
 ```
 
-(the guided menu's *Instalar el paquete en el venv* step offers to do this for you)
+Cada uno es idempotente y no pisa nada ajeno: si volvés a correrlo imprime `already_configured` cuando
+la entrada ya apunta a este ejecutable, y se niega (`*_configuration_conflict`) en vez de sobrescribir
+una entrada `fich` que apunte a otra cosa. Reiniciá el cliente después para que tome el servidor nuevo.
 
-Then register with one or more clients:
+`claude-desktop` detecta solo la ubicación de `claude_desktop_config.json` según tu sistema operativo:
 
-```bash
-fich-mcp configure claude           # Claude Code (user scope, via the `claude` CLI)
-fich-mcp configure codex            # ChatGPT desktop + Codex CLI + Codex IDE extension
-                                     #   (they share ~/.codex/config.toml)
-fich-mcp configure claude-desktop   # Claude Desktop (merges claude_desktop_config.json)
-fich-mcp configure all              # all three; one failing does not block the others
-```
+| Sistema | Ruta |
+|---|---|
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/Claude/claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
-Each is idempotent and conflict-safe: re-running prints `already_configured` when the entry already
-points at this executable, and refuses (`*_configuration_conflict`) rather than overwrite an
-unrelated `fich` entry. Restart the client afterward so it picks up the new server.
+Para una instalación no estándar (Flatpak, Claude portable, etc.) podés forzar la ruta con
+`fich-mcp configure claude-desktop --config-path /ruta/al/archivo.json`.
 
-Only Claude Code and Codex expose a CLI to inspect existing servers before writing
-(`claude mcp get`, `codex mcp list --json`); Claude Desktop has none, so `configure claude-desktop`
-reads and merges the JSON file directly and keeps a `.bak` copy alongside it before writing.
+Solo Claude Code y Codex tienen CLI propia para inspeccionar servidores ya registrados antes de
+escribir (`claude mcp get`, `codex mcp list --json`); Claude Desktop no tiene una, así que
+`configure claude-desktop` lee y mergea el JSON directamente y deja una copia `.bak` al lado antes de
+escribir.
 
-For any other MCP client, or to see the exact values before running the automatic registration,
-the guided menu's *Conectar un cliente MCP → Otro cliente* prints both the JSON (`mcpServers`) and
-TOML (`mcp_servers`) forms with the real executable path filled in.
+Para cualquier otro cliente MCP, o para ver los valores exactos antes de correr el registro
+automático, el menú guiado (*Conectar un cliente MCP → Otro cliente*) imprime tanto la forma JSON
+(`mcpServers`) como la TOML (`mcp_servers`) con la ruta real del ejecutable ya completada.
 
-**Concurrency**: multiple clients can read at once, but `sync` holds an exclusive lock
-(`writer.lock`) for the duration of the batch — a second client syncing at the same time gets
-`sync_busy` rather than a corrupted cache. That is the intended behavior, not a bug.
+**Concurrencia**: varios clientes pueden leer al mismo tiempo, pero `sync` toma un lock exclusivo
+(`writer.lock`) durante todo el lote — un segundo cliente que intente sincronizar en simultáneo recibe
+`sync_busy` en vez de un cache corrupto. Es el comportamiento esperado, no un bug.
 
-## Privacy and OCR limits
+## Privacidad y límites del OCR
 
-The cache lives under the platform XDG config/cache locations with private permissions. It is local to the account selected at initialization. PDF native text is preferred; scanned printed Spanish/English text can use OCR when Poppler and Tesseract are available. Handwriting, equations, low-quality scans, and complex layouts are best effort and can have gaps. `read_document` returns a page citation/text (or an image when available), not arbitrary filesystem paths.
+El cache vive en las ubicaciones XDG estándar de config/cache de cada sistema, con permisos privados.
+Es local a la cuenta con la que hiciste `init`. Se prefiere siempre el texto nativo del PDF; el texto
+escaneado en español o inglés puede usar OCR cuando Poppler y Tesseract están disponibles. Manuscritos,
+ecuaciones, escaneos de baja calidad y diseños complejos son *best effort* y pueden tener huecos.
+`read_document` devuelve una cita de página con texto (o una imagen cuando está disponible), nunca una
+ruta arbitraria del sistema de archivos.
 
-## Opt-in live integration checklist
+## Problemas comunes
 
-1. Use a non-production/test account if FICH provides one; otherwise obtain authorization from the account owner.
-2. Confirm a trusted network and accept the HTTP risk in the terminal.
-3. Run `fich-mcp init`, then `fich-mcp doctor` and verify `spa`/`eng` OCR support if needed.
-4. Select only courses you are authorized to access with `fich-mcp courses --select`.
-5. Run one limited `fich-mcp sync` and inspect its returned errors, freshness, and coverage before connecting an MCP client.
-6. Start `fich-mcp serve` locally, configure your client intentionally, and never expose the stdio endpoint to a network.
+| Síntoma | Causa probable | Qué hacer |
+|---|---|---|
+| `executable_not_found` al configurar un cliente | `fich-mcp` no está en el `PATH` | Symlink a `~/.local/bin` (Linux/macOS) o revisá el venv activado (Windows) |
+| `sync_busy` | Otra sincronización está corriendo | Esperá a que termine; es el lock funcionando, no un error |
+| `fich-mcp doctor` marca `fts5: false` | SQLite se compiló sin FTS5 | Actualizá Python/SQLite del sistema; la búsqueda de texto no anda sin esto |
+| OCR no extrae nada en español | Falta el paquete de idioma `spa` de Tesseract | Instalá `tesseract-ocr-spa` (Linux) o `tesseract-lang` (macOS) |
+
+## Checklist para usar contra el e-FICH real
+
+1. Usá una cuenta de prueba si FICH ofrece una; si no, tené autorización del dueño de la cuenta.
+2. Confirmá que estás en una red de confianza y aceptá el riesgo de HTTP en la terminal.
+3. Corré `fich-mcp init`, después `fich-mcp doctor` y verificá soporte OCR `spa`/`eng` si lo necesitás.
+4. Seleccioná solo las materias que estás autorizado a ver con `fich-mcp courses --select`.
+5. Corré un `fich-mcp sync` acotado e inspeccioná errores, frescura y cobertura antes de conectar un
+   cliente MCP.
+6. Levantá `fich-mcp serve` en local, configurá tu cliente a propósito y nunca expongas el endpoint
+   stdio a una red.
+
+## Contribuir
+
+Ver [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licencia
+
+[MIT](LICENSE).
