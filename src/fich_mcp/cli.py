@@ -3,63 +3,36 @@
 import argparse
 import getpass
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from .api import aliases, application
+from .clients import (
+    configure_all,
+    configure_claude_code,
+    configure_claude_desktop,
+    configure_codex,
+)
 from .remote import ALLOWLIST, Moodle
 from .security import FichError, Paths, atomic_write
 from .service import Service
 from .store import Store, resolve_course
 
+# Kept as the public name tests and callers already import.
+configure_claude = configure_claude_code
 
-def configure_claude(run=subprocess.run):
-    executable = shutil.which("fich-mcp")
-    claude = shutil.which("claude")
-    if not executable or not claude:
-        raise FichError("executable_not_found")
-    result = run([claude, "mcp", "get", "fich"], capture_output=True, text=True, timeout=10)
-    if result.returncode == 0:
-        lines = {
-            k.strip(): v.strip()
-            for line in result.stdout.splitlines()
-            if ":" in line
-            for k, v in [line.split(":", 1)]
-        }
-        if (
-            lines.get("Command") == executable
-            and lines.get("Args") == "serve"
-            and lines.get("Type") == "stdio"
-            and lines.get("Scope", "").startswith("User")
-        ):
-            return "already_configured"
-        raise FichError("claude_configuration_conflict")
-    if "No MCP server found" not in result.stderr + result.stdout:
-        raise FichError("claude_inspection_failed")
-    result = run(
-        [
-            claude,
-            "mcp",
-            "add",
-            "--scope",
-            "user",
-            "--transport",
-            "stdio",
-            "fich",
-            "--",
-            executable,
-            "serve",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode:
-        raise FichError("claude_configuration_failed")
-    return "configured"
+
+def launch_tui(execv=os.execvp):
+    """Replace this process with the guided bash menu (scripts/fich-menu.sh)."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "fich-menu.sh"
+    if not script.is_file():
+        raise FichError("tui_not_found")
+    execv("bash", ["bash", str(script)])
 
 
 def select_courses(service, paths):
@@ -164,6 +137,7 @@ def main(argv=None):
     commands.add_parser("init")
     commands.add_parser("doctor")
     commands.add_parser("serve")
+    commands.add_parser("tui")
     # The private worker command is needed by ``server.bounded_call`` but must not
     # advertise an unauthenticated implementation boundary in normal CLI help.
     if argv and argv[0] == "_rpc":
@@ -175,19 +149,28 @@ def main(argv=None):
     sync.add_argument("--force-ocr", action="store_true")
     sync.add_argument("--force-refresh", action="store_true")
     configure = commands.add_parser("configure")
-    configure.add_argument("client", choices=["claude"])
+    configure.add_argument("client", choices=["claude", "codex", "claude-desktop", "all"])
     args = parser.parse_args(argv)
     try:
         if args.command == "serve":
             from .server import serve
 
             serve()
+        elif args.command == "tui":
+            launch_tui()
         elif args.command == "_rpc":
             from .api import worker
 
             worker()
         elif args.command == "configure":
-            print(configure_claude())
+            if args.client == "claude":
+                print(configure_claude_code())
+            elif args.client == "codex":
+                print(configure_codex())
+            elif args.client == "claude-desktop":
+                print(configure_claude_desktop())
+            else:
+                print(json.dumps(configure_all(), ensure_ascii=False, indent=2))
         elif args.command == "doctor":
             print(json.dumps(doctor(Paths.default()), indent=2))
         elif args.command == "init":

@@ -341,24 +341,42 @@ accion_cliente() {
     local cliente
     cliente="$(ui_menu "¿Dónde querés usar e-FICH?" \
         "Claude Code — registro automático" \
+        "ChatGPT desktop / Codex CLI — registro automático" \
+        "Claude Desktop — registro automático" \
+        "Los tres — registro automático" \
         "Otro cliente — configuración manual" \
         "Volver")"
+    local objetivo=""
     case "$cliente" in
-        "Claude Code"*)
-            echo
-            if ! command -v fich-mcp >/dev/null 2>&1; then
-                warn "El registro apunta al ejecutable instalado, y no hay ninguno en el PATH."
-                dim "Instalalo primero desde «Instalar el paquete en el venv»."
-                pause; return
-            fi
-            local salida
-            salida="$(fich configure claude 2>&1)"
-            case "$salida" in
-                configured)         ok "✓ Registrado en Claude Code (scope de usuario)." ;;
-                already_configured) ok "✓ Ya estaba registrado y apunta al ejecutable correcto." ;;
-                *)                  err "No se pudo registrar: $salida" ;;
-            esac
-            ;;
+        "Claude Code"*)   objetivo="claude" ;;
+        "ChatGPT desktop"*) objetivo="codex" ;;
+        "Claude Desktop"*) objetivo="claude-desktop" ;;
+        "Los tres"*)      objetivo="all" ;;
+    esac
+    if [[ -n "$objetivo" ]]; then
+        echo
+        if ! command -v fich-mcp >/dev/null 2>&1; then
+            warn "El registro apunta al ejecutable instalado, y no hay ninguno en el PATH."
+            dim "Instalalo primero desde «Instalar el paquete en el venv»."
+            pause; return
+        fi
+        local salida
+        salida="$(fich configure "$objetivo" 2>&1)"
+        case "$objetivo" in
+            all)
+                echo "$salida"
+                ;;
+            *)
+                case "$salida" in
+                    configured)         ok "✓ Registrado." ;;
+                    already_configured) ok "✓ Ya estaba registrado y apunta al ejecutable correcto." ;;
+                    *)                  err "No se pudo registrar: $salida" ;;
+                esac
+                ;;
+        esac
+        pause; return
+    fi
+    case "$cliente" in
         "Otro cliente"*)
             echo
             dim "Agregá este servidor stdio a la configuración de tu cliente:"
@@ -380,6 +398,13 @@ accion_cliente() {
   }
 }
 JSON
+            echo
+            dim "En formato TOML (~/.codex/config.toml — ChatGPT desktop, Codex CLI, extensión de IDE):"
+            cat <<TOML | sed 's/^/  /'
+[mcp_servers.fich]
+command = "$binario"
+args = ["serve"]
+TOML
             ;;
         *) return ;;
     esac
@@ -390,7 +415,7 @@ accion_instalar_paquete() {
     banner
     title "Instalar el paquete en el venv"
     dim "Deja el ejecutable fich-mcp disponible y sincronizado con el código del repo."
-    dim "Es lo que necesita el registro automático en Claude Code."
+    dim "Es lo que necesita el registro automático en cualquier cliente."
     echo
     if [[ ! -x "$REPO/.venv/bin/pip" ]]; then
         err "No hay un venv en $REPO/.venv"
@@ -403,7 +428,22 @@ accion_instalar_paquete() {
     echo
     if [[ -x "$REPO/.venv/bin/fich-mcp" ]]; then
         ok "✓ Instalado: $REPO/.venv/bin/fich-mcp"
-        dim "Si no está en tu PATH, agregá $REPO/.venv/bin"
+        if command -v fich-mcp >/dev/null 2>&1; then
+            dim "Ya está en el PATH: $(command -v fich-mcp)"
+        else
+            echo
+            dim "Los clientes MCP (Claude, Codex/ChatGPT) resuelven \`fich-mcp\` por PATH,"
+            dim "no solo dentro de este venv. Sin esto el registro automático falla."
+            if ui_confirm "¿Poner un enlace en ~/.local/bin/fich-mcp?"; then
+                mkdir -p "$HOME/.local/bin"
+                ln -sf "$REPO/.venv/bin/fich-mcp" "$HOME/.local/bin/fich-mcp"
+                ok "✓ Enlazado: ~/.local/bin/fich-mcp → $REPO/.venv/bin/fich-mcp"
+                case ":$PATH:" in
+                    *":$HOME/.local/bin:"*) ;;
+                    *) warn "~/.local/bin no está en tu PATH todavía. Agregalo en tu shell rc y reabrí la terminal." ;;
+                esac
+            fi
+        fi
     else
         err "La instalación no dejó el ejecutable."
     fi

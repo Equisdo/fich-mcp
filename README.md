@@ -45,6 +45,7 @@ fich-mcp courses --select     # choose accessible courses for this local cache
 fich-mcp sync                 # refresh metadata and resumably index PDFs
 fich-mcp sync --force-ocr     # retry PDF pages using OCR
 fich-mcp serve                # start the stdio MCP server
+fich-mcp tui                  # open the guided menu (scripts/fich-menu.sh)
 ```
 
 ### Guided menu
@@ -54,6 +55,8 @@ sync, MCP client registration and diagnostics:
 
 ```bash
 bash scripts/fich-menu.sh
+# or, once fich-mcp is on PATH:
+fich-mcp tui
 ```
 
 It uses [gum](https://github.com/charmbracelet/gum) when it is installed and falls back to a
@@ -62,15 +65,46 @@ warning, the consent prompt and the password prompt.
 
 The MCP server exposes `list_courses`, `get_course_contents`, `get_announcements`, `get_upcoming`, `get_changes`, `search_content`, `read_document`, and `sync`. `get_upcoming` accepts an explicitly bounded window of up to 366 days and reports calendar-window coverage/freshness; a short cached window is not used for a wider request.
 
-## Claude Desktop/Code configuration
+## Connecting a client
 
-After installing the CLI on `PATH`, inspect the intended command and then opt in:
+All supported clients talk to `fich-mcp` the same way: as a local **stdio** subprocess, launched
+with `fich-mcp serve`. There is no network listener, no port, and no token to type into any client —
+the FICH credentials stay in the account-isolated cache described below, never in a client config.
+
+`fich-mcp configure` needs the CLI resolvable by name, not just inside `.venv`:
 
 ```bash
-fich-mcp configure claude
+# after `pip install -e .`, put the venv's executable on PATH once
+ln -sf "$(pwd)/.venv/bin/fich-mcp" ~/.local/bin/fich-mcp   # ~/.local/bin must be on PATH
 ```
 
-This command calls the local Claude CLI to add a **user-scoped stdio** entry whose command is `fich-mcp serve`. It refuses a conflicting existing entry and never asks Claude for FICH credentials. Review the resulting Claude MCP configuration before use; do not replace the command with a shell wrapper that embeds credentials.
+(the guided menu's *Instalar el paquete en el venv* step offers to do this for you)
+
+Then register with one or more clients:
+
+```bash
+fich-mcp configure claude           # Claude Code (user scope, via the `claude` CLI)
+fich-mcp configure codex            # ChatGPT desktop + Codex CLI + Codex IDE extension
+                                     #   (they share ~/.codex/config.toml)
+fich-mcp configure claude-desktop   # Claude Desktop (merges claude_desktop_config.json)
+fich-mcp configure all              # all three; one failing does not block the others
+```
+
+Each is idempotent and conflict-safe: re-running prints `already_configured` when the entry already
+points at this executable, and refuses (`*_configuration_conflict`) rather than overwrite an
+unrelated `fich` entry. Restart the client afterward so it picks up the new server.
+
+Only Claude Code and Codex expose a CLI to inspect existing servers before writing
+(`claude mcp get`, `codex mcp list --json`); Claude Desktop has none, so `configure claude-desktop`
+reads and merges the JSON file directly and keeps a `.bak` copy alongside it before writing.
+
+For any other MCP client, or to see the exact values before running the automatic registration,
+the guided menu's *Conectar un cliente MCP → Otro cliente* prints both the JSON (`mcpServers`) and
+TOML (`mcp_servers`) forms with the real executable path filled in.
+
+**Concurrency**: multiple clients can read at once, but `sync` holds an exclusive lock
+(`writer.lock`) for the duration of the batch — a second client syncing at the same time gets
+`sync_busy` rather than a corrupted cache. That is the intended behavior, not a bug.
 
 ## Privacy and OCR limits
 

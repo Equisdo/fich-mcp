@@ -9,7 +9,7 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from fich_mcp.cli import configure_claude, doctor, main
+from fich_mcp.cli import configure_claude, doctor, launch_tui, main
 from fich_mcp.security import FichError, Paths
 from fich_mcp.server import bounded_call
 
@@ -90,6 +90,20 @@ def test_public_cli_help_hides_internal_rpc_command():
     )
     assert "_rpc" not in result.stdout
     assert "==SUPPRESS==" not in result.stdout
+
+
+def test_launch_tui_execs_menu_script():
+    calls = []
+    launch_tui(execv=lambda program, args: calls.append((program, args)))
+    assert calls[0][0] == "bash"
+    assert calls[0][1][0] == "bash"
+    assert calls[0][1][1].endswith("scripts/fich-menu.sh")
+
+
+def test_launch_tui_missing_script(monkeypatch):
+    monkeypatch.setattr("fich_mcp.cli.Path.is_file", lambda self: False)
+    with pytest.raises(FichError, match="tui_not_found"):
+        launch_tui(execv=Mock(side_effect=AssertionError("must not exec")))
 
 
 def test_bounded_auth_error(monkeypatch, tmp_path):
