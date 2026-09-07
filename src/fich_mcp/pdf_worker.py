@@ -116,8 +116,15 @@ def main():
 
 
 if __name__ == "__main__":
+    exit_code = 0
     try:
         main()
     except Exception:
         # Native parser errors can contain document material; never print them.
-        sys.exit(2)
+        exit_code = 2
+    if os.name == "nt":
+        # Commit the exit status before teardown closes our kill-on-close job.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(exit_code)
+    sys.exit(exit_code)

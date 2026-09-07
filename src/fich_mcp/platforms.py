@@ -27,7 +27,10 @@ def _windows_identity():
 
     token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
     try:
-        return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+        return (
+            win32security.GetTokenInformation(token, win32security.TokenUser)[0],
+            win32security.GetTokenInformation(token, win32security.TokenOwner),
+        )
     finally:
         token.Close()
 
@@ -39,13 +42,16 @@ def windows_private(path, *, repair=False):
     from .security import FichError
 
     reject_link(path)
-    sid = _windows_identity()
+    path.stat()  # Missing credentials become FileNotFoundError, including on Windows.
+    sid, default_owner = _windows_identity()
     info = security.GetNamedSecurityInfo(
         str(path),
         security.SE_FILE_OBJECT,
         security.OWNER_SECURITY_INFORMATION | security.DACL_SECURITY_INFORMATION,
     )
-    if info.GetSecurityDescriptorOwner() != sid:
+    # Elevated tokens may create files owned by their default Administrators SID.
+    # Only accept that token owner while securing a path, never when reading secrets.
+    if info.GetSecurityDescriptorOwner() not in ((sid, default_owner) if repair else (sid,)):
         raise FichError("unsafe_storage")
     if repair:
         acl = security.ACL()
@@ -58,8 +64,10 @@ def windows_private(path, *, repair=False):
         security.SetNamedSecurityInfo(
             str(path),
             security.SE_FILE_OBJECT,
-            security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
-            None,
+            security.OWNER_SECURITY_INFORMATION
+            | security.DACL_SECURITY_INFORMATION
+            | security.PROTECTED_DACL_SECURITY_INFORMATION,
+            sid,
             None,
             acl,
             None,

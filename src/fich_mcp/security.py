@@ -40,6 +40,8 @@ def atomic_write(path: Path, data: bytes) -> None:
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".pending-")
     try:
         with os.fdopen(fd, "wb") as stream:
+            if os.name == "nt":
+                windows_private(Path(name), repair=True)
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
