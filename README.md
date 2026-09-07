@@ -47,6 +47,19 @@ fich-mcp sync --force-ocr     # retry PDF pages using OCR
 fich-mcp serve                # start the stdio MCP server
 ```
 
+### Guided menu
+
+A single interactive entry point wraps the commands above — session, course selection,
+sync, MCP client registration and diagnostics:
+
+```bash
+bash scripts/fich-menu.sh
+```
+
+It uses [gum](https://github.com/charmbracelet/gum) when it is installed and falls back to a
+plain-bash menu otherwise. The menu never reads your username or password: `init` owns the HTTP
+warning, the consent prompt and the password prompt.
+
 The MCP server exposes `list_courses`, `get_course_contents`, `get_announcements`, `get_upcoming`, `get_changes`, `search_content`, `read_document`, and `sync`. `get_upcoming` accepts an explicitly bounded window of up to 366 days and reports calendar-window coverage/freshness; a short cached window is not used for a wider request.
 
 ## Claude Desktop/Code configuration
