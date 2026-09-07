@@ -25,10 +25,11 @@ def _windows_identity():
     import win32con
     import win32security
 
-    with win32security.OpenProcessToken(
-        win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
-    ) as token:
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
+    try:
         return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+    finally:
+        token.Close()
 
 
 def windows_private(path, *, repair=False):
@@ -91,7 +92,7 @@ def exclusive_writer(path):
                 0,
                 None,
                 win32con.OPEN_ALWAYS,
-                win32con.FILE_FLAG_OPEN_REPARSE_POINT,
+                0x00200000,  # FILE_FLAG_OPEN_REPARSE_POINT
                 None,
             )
         except pywintypes.error as exc:
@@ -127,7 +128,7 @@ def windows_job(pid=None, *, pdf=False):
     import win32api
     import win32job
 
-    job = win32job.CreateJobObject(None, None)
+    job = win32job.CreateJobObject(None, "")
     try:
         info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
         basic = info["BasicLimitInformation"]
@@ -142,8 +143,11 @@ def windows_job(pid=None, *, pdf=False):
         if pid is None:
             win32job.AssignProcessToJobObject(job, win32api.GetCurrentProcess())
         else:
-            with win32api.OpenProcess(0x0100 | 0x0001, False, pid) as process:
+            process = win32api.OpenProcess(0x0100 | 0x0001, False, pid)
+            try:
                 win32job.AssignProcessToJobObject(job, process)
+            finally:
+                process.Close()
         return job
     except BaseException:
         job.Close()
