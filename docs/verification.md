@@ -218,3 +218,108 @@ A source that stays partial keeps `errors` non-empty on every sync, so `runs.com
 becomes 1 and `get_changes` without an explicit `since` returns no baseline interval. That is the
 pre-existing partial-sync semantics and was not changed here; pass `since` to `get_changes` while a
 course keeps restricted modules.
+
+## Live verification against the real e-FICH site
+
+Run on 2026-09-06 with the token already stored by a previous `init`; no credentials were entered and
+no login was performed in this pass. The site is HTTP-only, so the stored token travelled in clear —
+that risk is inherent to e-FICH and is documented in the README. The cache was copied before any
+command so the pre-fix state stayed available for comparison.
+
+### Starting state (the defective first sync)
+
+```text
+sources    : course 2079 'assignments' -> error='partial_inventory', last_success=NULL
+items      : 0 rows with source='assignments'   (the visible task was never stored)
+jobs       : 70 complete | 11 partial 'extraction_gaps' | 1 failed 'extraction_timeout' (pages=NULL)
+pages      : 1880 ok | 34 gap 'extraction_timeout' | 15 gap 'no_text_detected'
+```
+
+### A latent crash the first fix uncovered
+
+Keeping the previously discarded assignments made the code reach data it had never processed:
+
+```text
+File "src/fich_mcp/service.py", line 241, in _assignments
+    "due": max(assignment.get("duedate", 0), extension),
+TypeError: '>' not supported between instances of 'NoneType' and 'int'
+```
+
+Moodle sends an explicit `null` for an unset due date, and `dict.get(key, default)` returns that `null`,
+not the default. The CLI's broad handler turned it into `operation_failed` and the whole sync died. Fixed
+by reading a missing key and an explicit null as the same absent value across `duedate`,
+`extensionduedate`, `submission`/`teamsubmission` and `cmid`. Regression test:
+`tests/test_sync.py::test_assignment_nulls_are_read_as_absent_values`.
+
+### `sync` (no force)
+
+```text
+errors     : [{"course": 2079, "source": "assignments", "code": "partial_inventory"}]
+continuation: false
+items      : assignment:12696 "Condición Final Laboratorio" (course 2079), due=0, status=new
+sources    : course 2079 'assignments' -> error='partial_inventory', last_success set
+search     : one FTS row for assignment:12696
+pages      : 15 empty (error NULL) | 34 gap 'extraction_timeout' | 1880 ok
+```
+
+The task that the account can read is stored, indexed and searchable while the source is still reported
+partial. The 15 verified-blank pages were reclassified on cache open. The 11 `partial` and 1 `failed`
+jobs were correctly left alone: an unforced sync only drains `pending`/`indexing`.
+
+### `sync --force-refresh`
+
+Six batches, 15.3 / 15.1 / 15.1 / 16.2 / 15.1 / 11.5 s — 88.3 s of wall time for 82 downloads, 82 page
+counts, the retries and one full document.
+
+```text
+jobs  : 82 complete, 0 partial, 0 failed          (was 70 / 11 / 1)
+pages : 1915 ok | 15 empty                        (was 1880 ok | 49 gap)
+the document that had failed before its page count: failed/pages=NULL -> complete/pages=1
+the 34 'extraction_timeout' pages: all ok — 32 native, 2 OCR
+```
+
+Every one of the 34 pages and the failed document extracted normally once the worker got a whole
+budget, which is what the read-only diagnosis had predicted.
+
+### Proof that healthy pages were not reprocessed
+
+`store.page()` writes with `INSERT OR REPLACE`, and SQLite assigns a **new rowid** on replace. Comparing
+rowids between the backup and the live cache therefore shows exactly which page rows were rewritten:
+
+```text
+paginas totales antes/ahora   : 1929 / 1930
+rowid intacto (NO reprocesadas): 1895
+rowid nuevo  (reprocesadas)    : 34
+paginas nuevas                 : 1  (the previously failed document)
+reprocesadas que estaban sanas : 0
+```
+
+The 34 rewritten rows are exactly the 34 that carried `extraction_timeout`. The 15 blank pages were
+migrated in place with an `UPDATE` (rowid preserved) and deliberately **not** retried: a verified-absent
+page is finished work, not pending work.
+
+### Final coverage check
+
+```text
+paginas ex-timeout con fila FTS : 34 / 34
+paginas vacias con fila FTS     : 0 / 15
+documentos sin ninguna pagina no extraida: 82 / 82
+```
+
+The retried pages are searchable, the blank pages stay out of the index without degrading coverage, and
+no document is left with an unextracted page.
+
+### Full suite after the live pass
+
+```text
+.venv/bin/python -m pytest -q
+64 passed in 8.22s
+
+.venv/bin/python -m ruff check .
+All checks passed!
+```
+
+**Environment trap:** the `.venv` carries a stale installed copy of `fich_mcp` in `site-packages`. The
+test suite only uses `src/` because `pyproject.toml` sets `pythonpath = ["src"]`, and the live commands
+above were run as `PYTHONPATH=src .venv/bin/python -m fich_mcp …`. The installed `fich-mcp` entry point
+still runs the old code until the package is reinstalled.

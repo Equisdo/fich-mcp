@@ -228,9 +228,12 @@ class Service:
                 }:
                     raise
                 result, error = {}, exc.code
-            last = result.get("lastattempt", {})
-            extension = last.get("extensionduedate", 0)
-            status = last.get("submission", last.get("teamsubmission", {})).get("status", "unknown")
+            # Moodle sends explicit nulls for an unset due date, an absent attempt, or a
+            # submission the account cannot read; a missing key and a null mean the same here.
+            last = result.get("lastattempt") or {}
+            extension = last.get("extensionduedate") or 0
+            submission = last.get("submission") or last.get("teamsubmission") or {}
+            status = submission.get("status") or "unknown"
             state["items"].append(
                 {
                     "id": f"assignment:{assignment['id']}",
@@ -238,12 +241,12 @@ class Service:
                     "title": assignment.get("name", ""),
                     "text": visible_text(assignment.get("intro")),
                     "kind": "assignment",
-                    "due": max(assignment.get("duedate", 0), extension),
+                    "due": max(assignment.get("duedate") or 0, extension),
                     "submission_status": status,
                     "status_error": error,
                     "pending": None if status == "unknown" else status != "submitted",
                     "remote_modified": assignment.get("timemodified"),
-                    "url": f"{BASE}/mod/assign/view.php?id={assignment.get('cmid', 0)}",
+                    "url": f"{BASE}/mod/assign/view.php?id={assignment.get('cmid') or 0}",
                 }
             )
             state["next"] += 1

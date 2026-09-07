@@ -207,3 +207,30 @@ def test_partial_assignment_inventory_keeps_visible_tasks(service):
     assert freshness["partial"] is True
     assert freshness["stale"] is True
     assert freshness["last_success"] is not None
+
+
+def test_assignment_nulls_are_read_as_absent_values(service):
+    """Moodle sends explicit nulls for an unset due date or an unreadable attempt."""
+    s, r = service
+    r["mod_assign_get_assignments"] = {
+        "courses": [
+            {
+                "id": 1,
+                "assignments": [
+                    {"id": 6, "name": "Sin vencimiento", "duedate": None, "cmid": None}
+                ],
+            }
+        ],
+        "warnings": [],
+    }
+    r["mod_assign_get_submission_status"] = {
+        "lastattempt": {"submission": None, "teamsubmission": None, "extensionduedate": None}
+    }
+
+    assert s.sync(index=False)["errors"] == []
+
+    item = next(i for i in s.store.items(source="assignments") if i["id"] == "assignment:6")
+    assert item["due"] == 0
+    assert item["submission_status"] == "unknown"
+    assert item["pending"] is None
+    assert item["url"].endswith("/mod/assign/view.php?id=0")
