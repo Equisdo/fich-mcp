@@ -73,6 +73,13 @@ class Store:
         CREATE TABLE IF NOT EXISTS calendar_coverage(course INTEGER, start REAL, end REAL,
           last_success REAL, PRIMARY KEY(course,start,end));
         """)
+        with self.db:
+            # Caches written before empty pages had their own status recorded a verified blank
+            # page as an extraction gap; reclassify it so coverage is not understated.
+            self.db.execute(
+                "UPDATE pages SET status='empty',error=NULL "
+                "WHERE status='gap' AND error='no_text_detected'"
+            )
 
     def close(self):
         self.db.close()
@@ -117,7 +124,9 @@ class Store:
         with self.db:
             self.db.execute("UPDATE courses SET accessible=0 WHERE id=?", (course,))
 
-    def snapshot(self, course, source, items, *, now=None, complete=True, error=None):
+    def snapshot(
+        self, course, source, items, *, now=None, complete=True, partial=False, error=None
+    ):
         now = time.time() if now is None else now
         prior = self.db.execute(
             "SELECT last_success FROM sources WHERE course=? AND source=?", (course, source)
@@ -165,20 +174,22 @@ class Store:
                             "INSERT INTO jobs(item) VALUES(?) ON CONFLICT(item) DO UPDATE SET state='pending',error=NULL",
                             (key,),
                         )
-            for row in self.db.execute(
-                "SELECT id,data FROM items WHERE course=? AND source=? AND available=1",
-                (course, source),
-            ).fetchall():
-                if row["id"] not in seen:
-                    self.db.execute("UPDATE items SET available=0 WHERE id=?", (row["id"],))
-                    if baseline:
-                        self.db.execute(
-                            "INSERT INTO changes(course,item,kind,time,data) VALUES(?,?,?,?,?)",
-                            (course, row["id"], "unavailable", now, row["data"]),
-                        )
+            # A partial inventory legitimately omits restricted items; never infer removal.
+            if not partial:
+                for row in self.db.execute(
+                    "SELECT id,data FROM items WHERE course=? AND source=? AND available=1",
+                    (course, source),
+                ).fetchall():
+                    if row["id"] not in seen:
+                        self.db.execute("UPDATE items SET available=0 WHERE id=?", (row["id"],))
+                        if baseline:
+                            self.db.execute(
+                                "INSERT INTO changes(course,item,kind,time,data) VALUES(?,?,?,?,?)",
+                                (course, row["id"], "unavailable", now, row["data"]),
+                            )
             self.db.execute(
-                "UPDATE sources SET last_success=?,error=NULL WHERE course=? AND source=?",
-                (now, course, source),
+                "UPDATE sources SET last_success=?,error=? WHERE course=? AND source=?",
+                (now, error if partial else None, course, source),
             )
 
     def record_calendar_coverage(self, course, start, end, *, now=None):

@@ -55,6 +55,7 @@ def date_range(start=None, end=None):
 class Service:
     def __init__(self, store, remote):
         self.store, self.remote = store, remote
+        self.partial = False
 
     def refresh_courses(self):
         courses = self.remote.call(
@@ -68,8 +69,14 @@ class Service:
     def _call(self, function, **params):
         result = self.remote.call(function, **params)
         if isinstance(result, dict) and result.get("warnings"):
-            raise FichError("partial_inventory")
+            # Moodle reports restricted modules as warnings alongside the records the account
+            # may read. Keep those records and mark the inventory partial instead of losing all.
+            self.partial = True
         return result
+
+    def _save_cursor(self, key, state):
+        state["partial"] = self.partial
+        return self.store.cursor(key, state)
 
     def _contents(self, course):
         result = self._call("core_course_get_contents", courseid=course)
@@ -139,8 +146,9 @@ class Service:
                 "discussions": [],
                 "post": 0,
             }
+        self.partial = self.partial or state.get("partial", False)
         while state["forum"] < len(state["forums"]):
-            self.store.cursor(key, state)
+            self._save_cursor(key, state)
             forum = state["forums"][state["forum"]]
             if not state["discussions"]:
                 result = self._call(
@@ -156,7 +164,7 @@ class Service:
                     state["page"] = 0
                     continue
             while state["post"] < len(state["discussions"]):
-                self.store.cursor(key, state)
+                self._save_cursor(key, state)
                 discussion = state["discussions"][state["post"]]
                 did = discussion.get("discussion", discussion["id"])
                 result = self._call("mod_forum_get_discussion_posts", discussionid=did)
@@ -202,8 +210,9 @@ class Service:
                 "next": 0,
                 "items": [],
             }
+        self.partial = self.partial or state.get("partial", False)
         while state["next"] < len(state["assignments"]):
-            self.store.cursor(key, state)
+            self._save_cursor(key, state)
             assignment = state["assignments"][state["next"]]
             error = None
             try:
@@ -299,6 +308,7 @@ class Service:
                     if course and cid != course:
                         continue
                     for source in SOURCES:
+                        self.partial = False
                         try:
                             if time.monotonic() >= end:
                                 raise FichError("budget_exhausted")
@@ -306,7 +316,21 @@ class Service:
                                 items = self._calendar(cid, *calendar_window)
                             else:
                                 items = getattr(self, "_" + source)(cid)
-                            self.store.snapshot(cid, source, items)
+                            self.store.snapshot(
+                                cid,
+                                source,
+                                items,
+                                partial=self.partial,
+                                error="partial_inventory" if self.partial else None,
+                            )
+                            if self.partial:
+                                errors.append(
+                                    {
+                                        "course": cid,
+                                        "source": source,
+                                        "code": "partial_inventory",
+                                    }
+                                )
                             if source == "calendar":
                                 start, finish = calendar_window or date_range()
                                 self.store.record_calendar_coverage(cid, start, finish)
@@ -352,6 +376,7 @@ class Service:
             "freshness": [
                 {
                     **f,
+                    "partial": f["error"] == "partial_inventory",
                     "stale": f["last_success"] is None
                     or time.time() - f["last_success"] > 300
                     or bool(f["error"]),

@@ -69,13 +69,14 @@ def main():
         env={**os.environ, "OMP_THREAD_LIMIT": "1"},
     )
     text = Path("page.txt").read_text()[:200000]
+    # An OCR pass that returns nothing read the page successfully: it is blank, not a gap.
     print(
         json.dumps(
             {
                 "text": text,
-                "status": "ok" if text.strip() else "gap",
+                "status": "ok" if text.strip() else "empty",
                 "provenance": "ocr",
-                "error": None if text.strip() else "no_text_detected",
+                "error": None,
             }
         )
     )

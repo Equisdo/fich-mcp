@@ -173,3 +173,37 @@ def test_requested_calendar_window_refreshes_and_reports_coverage(service):
         "end": int(date_range(short_start, requested_end)[1]),
     }
     assert coverage["fresh"] is True
+
+
+def test_partial_assignment_inventory_keeps_visible_tasks(service):
+    """Warnings about restricted modules must not discard the tasks the account can read."""
+    s, r = service
+    s.sync(index=False)
+    assert [i["title"] for i in s.store.items(source="assignments")] == ["Trabajo"]
+
+    r["mod_assign_get_assignments"] = {
+        "courses": [
+            {"id": 1, "assignments": [{"id": 5, "name": "Parcial", "duedate": 2000000000}]}
+        ],
+        "warnings": [
+            {
+                "item": "module",
+                "itemid": 9,
+                "warningcode": "1",
+                "message": "No access rights in module context",
+            }
+        ],
+    }
+    result = s.sync(index=False)
+
+    titles = {i["title"] for i in s.store.items(source="assignments")}
+    assert "Parcial" in titles
+    # A restricted module is invisible, not deleted: the earlier task stays available.
+    assert "Trabajo" in titles
+    assert [c["kind"] for c in s.store.changes(0) if c["kind"] == "unavailable"] == []
+    assert s.store.search("Parcial")[0]["document_id"] == "assignment:5"
+    assert {"course": 1, "source": "assignments", "code": "partial_inventory"} in result["errors"]
+    freshness = next(f for f in result["freshness"] if f["source"] == "assignments")
+    assert freshness["partial"] is True
+    assert freshness["stale"] is True
+    assert freshness["last_success"] is not None
