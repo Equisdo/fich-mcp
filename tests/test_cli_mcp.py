@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -103,6 +104,7 @@ def test_public_cli_help_hides_internal_rpc_command():
     assert "==SUPPRESS==" not in result.stdout
 
 
+@pytest.mark.skipif(os.name == "nt", reason="optional POSIX Bash menu")
 def test_launch_tui_execs_menu_script():
     calls = []
     launch_tui(execv=lambda program, args: calls.append((program, args)))
@@ -113,8 +115,10 @@ def test_launch_tui_execs_menu_script():
 
 def test_launch_tui_missing_script(monkeypatch):
     monkeypatch.setattr("fich_mcp.cli.Path.is_file", lambda self: False)
-    with pytest.raises(FichError, match="tui_not_found"):
-        launch_tui(execv=Mock(side_effect=AssertionError("must not exec")))
+    run = Mock()
+    monkeypatch.setattr("fich_mcp.tui.run", run)
+    launch_tui(execv=Mock(side_effect=AssertionError("must not exec")))
+    run.assert_called_once_with()
 
 
 def test_bounded_auth_error(monkeypatch, tmp_path):

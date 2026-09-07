@@ -4,17 +4,45 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
+
+      - name: Install OCR (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
+
+      - name: Install OCR (macOS)
+        if: runner.os == 'macOS'
+        run: brew install poppler tesseract tesseract-lang
+
+      - name: Install OCR (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install poppler tesseract --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $poppler = Get-ChildItem C:\ProgramData\chocolatey\lib\poppler -Recurse -Filter pdftoppm.exe | Select-Object -First 1
+          if (!$poppler) { throw 'pdftoppm.exe missing' }
+          $poppler.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          'C:\Program Files\Tesseract-OCR' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Invoke-WebRequest https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/spa.traineddata -OutFile 'C:\Program Files\Tesseract-OCR\tessdata\spa.traineddata'
 
       - name: Install package and dev dependencies
         run: python -m pip install -e '.[dev]'
@@ -24,3 +52,26 @@ jobs:
 
       - name: Test
         run: python -m pytest -q
+
+      - name: Installed doctor
+        run: fich-mcp doctor
+
+      - name: Windows installed menu
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '"0" | fich-mcp tui'
+
+      - name: Build wheel and test clean installation
+        shell: bash
+        run: |
+          python -m pip wheel --no-deps . -w dist
+          python -m venv wheel-env
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PY="$PWD/wheel-env/Scripts/python.exe"
+          else
+            PY="$PWD/wheel-env/bin/python"
+          fi
+          "$PY" -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$PY" -m fich_mcp doctor
+          printf '0\n' | "$PY" -m fich_mcp tui

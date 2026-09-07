@@ -6,7 +6,7 @@ name = "fich-mcp"
 version = "0.1.0"
 description = "Local read-only FICH Moodle MCP companion"
 requires-python = ">=3.12"
-dependencies = ["httpx>=0.28,<0.29", "mcp==2.1.1", "pypdf>=6.17,<7"]
+dependencies = ["httpx>=0.28,<0.29", "mcp==2.1.1", "pypdf>=6.17,<7", "tzdata>=2025.2", "pywin32>=310; sys_platform == 'win32'"]
 [project.optional-dependencies]
 dev = ["pytest>=9,<10", "pytest-cov>=7,<8", "reportlab>=4,<5", "ruff>=0.16,<0.17"]
 [project.scripts]

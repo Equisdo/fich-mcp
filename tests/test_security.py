@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 
 import httpx
@@ -21,13 +22,15 @@ def test_secure_account(tmp_path):
     account = Account("secret", 7, ["core_webservice_get_site_info"], True, True)
     paths.save(account)
     assert paths.load() == account
-    assert stat.S_IMODE(paths.config.stat().st_mode) == 0o700
-    assert stat.S_IMODE(paths.account_file.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(paths.config.stat().st_mode) == 0o700
+        assert stat.S_IMODE(paths.account_file.stat().st_mode) == 0o600
     assert "password" not in paths.account_file.read_text()
     assert paths.user_cache(7) != paths.user_cache(8)
     assert "secret" not in repr(account)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits; Windows ACL tests separate")
 def test_do_not_chmod_existing_parent(tmp_path):
     tmp_path.chmod(0o755)
     private_dir(tmp_path / "owned")

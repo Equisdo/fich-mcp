@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
+from .platforms import reject_link, windows_private
+
 ORIGIN = "http://e-fich.unl.edu.ar"
 BASE = ORIGIN + "/moodle"
 SECRET_KEYS = {"token", "wstoken", "password", "privatetoken", "sesskey", "access_token"}
@@ -22,9 +24,11 @@ class FichError(Exception):
 
 
 def private_dir(path: Path) -> Path:
-    if path.is_symlink():
-        raise FichError("unsafe_storage")
+    reject_link(path)
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name == "nt":
+        windows_private(path, repair=True)
+        return path
     if path.stat().st_uid != os.getuid():
         raise FichError("unsafe_storage")
     path.chmod(0o700)
@@ -36,6 +40,8 @@ def atomic_write(path: Path, data: bytes) -> None:
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".pending-")
     try:
         with os.fdopen(fd, "wb") as stream:
+            if os.name == "nt":
+                windows_private(Path(name), repair=True)
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
@@ -74,9 +80,12 @@ class Paths:
 
     def load(self) -> Account:
         try:
-            if self.account_file.is_symlink() or self.account_file.stat().st_mode & 0o077:
+            reject_link(self.account_file)
+            if os.name == "nt":
+                windows_private(self.account_file)
+            elif self.account_file.stat().st_mode & 0o077:
                 raise FichError("unsafe_storage")
-            data = json.loads(self.account_file.read_text())
+            data = json.loads(self.account_file.read_text(encoding="utf-8"))
             account = Account(**data)
             if not account.http_accepted:
                 raise FichError("http_consent_required")

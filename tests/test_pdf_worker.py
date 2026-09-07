@@ -1,7 +1,8 @@
 """Behavioral coverage for the isolated PDF child process entry point."""
 
 import json
-import runpy
+import os
+import subprocess
 import sys
 
 import pytest
@@ -23,7 +24,7 @@ class Reader:
 
 
 def run_worker(monkeypatch, capsys, *, action, page=1, force="0", text="Native text " * 8):
-    monkeypatch.setattr(pdf_worker.resource, "setrlimit", lambda *args: None)
+    monkeypatch.setattr(pdf_worker, "apply_limits", lambda: None)
     monkeypatch.setattr(sys, "argv", ["pdf_worker", "document.pdf", action, str(page), force])
     pdf_worker.main()
     return capsys.readouterr().out
@@ -53,6 +54,7 @@ def test_worker_reports_ocr_gap_when_tools_are_unavailable(monkeypatch, capsys):
     }
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file backend; bounded pipes tested separately")
 def test_worker_renders_and_ocr_extracts_in_private_working_directory(monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("pypdf.PdfReader", lambda path: Reader(""))
@@ -87,11 +89,10 @@ def test_worker_enforces_page_limit_and_module_entrypoint_hides_parser_errors(mo
     with pytest.raises(ValueError, match="page limit"):
         run_worker(monkeypatch, capsys, action="count")
 
-    monkeypatch.setattr(pdf_worker.resource, "setrlimit", lambda *args: None)
-    monkeypatch.setattr(sys, "argv", ["pdf_worker", "document.pdf", "count", "1", "0"])
-    monkeypatch.setattr("pypdf.PdfReader", lambda path: (_ for _ in ()).throw(ValueError("bad PDF")))
-    monkeypatch.delitem(sys.modules, "fich_mcp.pdf_worker")
-    with pytest.raises(SystemExit) as exit_code:
-        runpy.run_module("fich_mcp.pdf_worker", run_name="__main__")
-    assert exit_code.value.code == 2
-    assert capsys.readouterr().out == ""
+    result = subprocess.run(
+        [sys.executable, str(pdf_worker.__file__), "missing.pdf", "count", "1", "0"],
+        capture_output=True, timeout=20,
+    )
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert result.stderr == b""

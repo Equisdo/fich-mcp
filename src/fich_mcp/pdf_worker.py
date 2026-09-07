@@ -2,17 +2,32 @@
 
 import json
 import os
-import resource
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+if os.name != "nt":
+    import resource
 
-def main():
+# Retain the handle until process exit: closing a kill-on-close job kills us.
+_pdf_job = None
+
+
+def apply_limits():
+    global _pdf_job
+    if os.name == "nt":
+        from fich_mcp.platforms import windows_job
+
+        _pdf_job = windows_job(pdf=True)
+        return
     resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2, 768 * 1024**2))
     resource.setrlimit(resource.RLIMIT_CPU, (12, 12))
     resource.setrlimit(resource.RLIMIT_FSIZE, (24 * 1024**2, 24 * 1024**2))
+
+
+def main():
+    apply_limits()
     from pypdf import PdfReader
 
     path, action, number, force = sys.argv[1:]
@@ -36,6 +51,24 @@ def main():
                 {"text": text, "status": "gap", "provenance": "native", "error": "ocr_unavailable"}
             )
         )
+        return
+    if os.name == "nt":
+        from fich_mcp.windows_pdf import render_ocr
+
+        output = render_ocr(path, action, page)
+        if action == "render":
+            sys.stdout.buffer.write(output)
+        else:
+            print(
+                json.dumps(
+                    {
+                        "text": output,
+                        "status": "ok" if output.strip() else "empty",
+                        "provenance": "ocr",
+                        "error": None,
+                    }
+                )
+            )
         return
     # Caller owns this private temporary working directory.
     subprocess.run(
@@ -68,7 +101,7 @@ def main():
         timeout=8,
         env={**os.environ, "OMP_THREAD_LIMIT": "1"},
     )
-    text = Path("page.txt").read_text()[:200000]
+    text = Path("page.txt").read_text(encoding="utf-8")[:200000]
     # An OCR pass that returns nothing read the page successfully: it is blank, not a gap.
     print(
         json.dumps(
@@ -83,8 +116,15 @@ def main():
 
 
 if __name__ == "__main__":
+    exit_code = 0
     try:
         main()
     except Exception:
         # Native parser errors can contain document material; never print them.
-        sys.exit(2)
+        exit_code = 2
+    if os.name == "nt":
+        # Commit the exit status before teardown closes our kill-on-close job.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(exit_code)
+    sys.exit(exit_code)
