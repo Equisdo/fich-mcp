@@ -26,8 +26,9 @@ C_ROJO=$'\033[38;5;203m'
 C_BOLD=$'\033[1m'
 C_RESET=$'\033[0m'
 
+# FICH_MENU_NO_GUM=1 forces the plain-bash menu (useful over a dumb terminal).
 HAS_GUM=0
-command -v gum >/dev/null 2>&1 && HAS_GUM=1
+[[ -z "${FICH_MENU_NO_GUM:-}" ]] && command -v gum >/dev/null 2>&1 && HAS_GUM=1
 
 # ---------------------------------------------------------------- presentation
 
@@ -99,12 +100,15 @@ ui_menu() {
     [[ "$answer" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= $# )) && printf '%s\n' "${!answer}"
 }
 
-# Zero or more choices out of N, one per output line.
+# Zero or more choices out of N, one per output line. $2 is a comma-separated
+# list of labels that start selected, so opening the picker cannot silently drop
+# what is already chosen. A non-zero status means the user cancelled.
 ui_multi() {
-    local header="$1"; shift
+    local header="$1" preselected="$2"; shift 2
     if (( HAS_GUM )); then
         gum choose --no-limit --height 14 --cursor="❯ " --cursor.foreground="$AZUL" \
-            --selected.foreground="$AZUL2" --header="$header" "$@"
+            --selected="$preselected" --selected.foreground="$AZUL2" \
+            --header="$header" "$@"
         return
     fi
     printf '%s%s%s\n\n' "$C_GRIS" "$header" "$C_RESET" >&2
@@ -132,6 +136,17 @@ ui_confirm() {
     [[ "${answer,,}" == s* ]]
 }
 
+# Same question, but Enter cancels: for anything that can destroy existing state.
+ui_confirm_danger() {
+    if (( HAS_GUM )); then
+        gum confirm --default=false --affirmative="Sí, continuar" --negative="Cancelar" "$1"
+        return
+    fi
+    printf ' %s%s%s [s/N] ' "$C_AMBAR" "$1" "$C_RESET"
+    local answer; read -r answer
+    [[ "${answer,,}" == s* ]]
+}
+
 spin() {
     local label="$1"; shift
     if (( HAS_GUM )); then
@@ -150,6 +165,11 @@ FICH_SOURCE=""
 PY=""
 
 resolve_cli() {
+    # `configure claude` registers whatever `which fich-mcp` resolves to, so put
+    # the venv's executable on PATH when nothing else provides one.
+    if ! command -v fich-mcp >/dev/null 2>&1 && [[ -x "$REPO/.venv/bin/fich-mcp" ]]; then
+        export PATH="$REPO/.venv/bin:$PATH"
+    fi
     # Prefer the repository source: the venv can hold an older installed copy,
     # and PYTHONPATH puts src/ ahead of site-packages.
     if [[ -x "$REPO/.venv/bin/python" && -f "$REPO/src/fich_mcp/cli.py" ]]; then
@@ -220,49 +240,71 @@ accion_materias() {
         pause; return
     fi
 
+    # A comma in a course name would break gum's --selected list, so the label
+    # keeps the id in field 2 and uses a middle dot instead.
     mapfile -t opciones < <(printf '%s' "$json" | "$PY" -c '
 import json, sys
 for course in json.load(sys.stdin):
     mark = "\u25cf" if course.get("selected") else "\u25cb"
-    print(mark, course["id"], "\u00b7", course.get("fullname", ""))
+    name = course.get("fullname", "").replace(",", " \u00b7")
+    print(mark, course["id"], "\u00b7", name)
 ')
     if (( ${#opciones[@]} == 0 )); then
         warn "La cuenta no tiene materias accesibles."
         pause; return
     fi
 
+    local previas
+    previas="$(printf '%s\n' "${opciones[@]}" | grep '^●' | paste -sd, -)"
+
     echo
     dim "● ya seleccionada   ○ no seleccionada"
     echo
-    mapfile -t elegidas < <(ui_multi "¿Qué materias querés disponibles?" "${opciones[@]}")
+    local elegidas_archivo estado
+    elegidas_archivo="$(mktemp)"
+    ui_multi "¿Qué materias querés disponibles?" "$previas" "${opciones[@]}" > "$elegidas_archivo"
+    estado=$?
+    mapfile -t elegidas < "$elegidas_archivo"
+    rm -f "$elegidas_archivo"
 
-    local ids=()
-    local linea
+    if (( estado != 0 )); then
+        echo; dim "Cancelado: la selección quedó como estaba."
+        pause; return
+    fi
+
+    local ids=() linea
     for linea in "${elegidas[@]}"; do
-        ids+=("$(printf '%s' "$linea" | awk '{print $2}')")
+        [[ -n "$linea" ]] && ids+=("$(printf '%s' "$linea" | awk '{print $2}')")
     done
 
     echo
     if (( ${#ids[@]} == 0 )); then
-        warn "⚠ No seleccionaste ninguna materia; eso deja el MCP sin contenido."
-        ui_confirm "¿Guardar igual una selección vacía?" || { pause; return; }
+        warn "⚠ No seleccionaste ninguna materia."
+        dim "Guardar así deja el MCP sin contenido y descarta la selección actual."
+        ui_confirm_danger "¿Guardar igual una selección vacía?" || {
+            echo; dim "Cancelado: la selección quedó como estaba."; pause; return
+        }
     else
         for linea in "${elegidas[@]}"; do ok "  ✓ ${linea#* }"; done
         echo
-        ui_confirm "¿Guardar esta selección?" || { pause; return; }
+        ui_confirm "¿Guardar esta selección?" || {
+            echo; dim "Cancelado: la selección quedó como estaba."; pause; return
+        }
     fi
 
     # `courses --select` prints the catalogue and its own English prompt, then reads
-    # one comma-separated line; keep only its result line for this menu.
+    # one comma-separated line; report what it actually stored, not what was asked.
     local respuesta salida guardado
     respuesta="$(IFS=,; echo "${ids[*]}")"
     echo
-    salida="$(printf '%s\n' "$respuesta" | spin "Guardando selección..." fich courses --select 2>/dev/null)"
-    guardado="$(printf '%s' "$salida" | grep -o '{"selected".*}' | tail -1)"
+    salida="$(printf '%s\n' "$respuesta" | "${FICH[@]}" courses --select 2>/dev/null)"
+    guardado="$(printf '%s' "$salida" | grep -o '{"selected": \[[^]]*\]}' | tail -1)"
     if [[ -z "$guardado" ]]; then
         err "No se pudo guardar la selección."
     else
-        ok "✓ Selección guardada: ${#ids[@]} materia(s)."
+        local cuantas
+        cuantas="$(printf '%s' "$guardado" | grep -o '[0-9]\+' | wc -l)"
+        ok "✓ Guardadas $cuantas materia(s)."
     fi
     pause
 }
@@ -283,7 +325,7 @@ accion_sync() {
         Reintentar*)
             echo
             warn "Vuelve a descargar todos los PDF desde e-FICH. Puede tardar varios minutos."
-            ui_confirm "¿Seguir?" || { pause; return; }
+            ui_confirm_danger "¿Seguir?" || { pause; return; }
             echo; fich sync --force-refresh | tail -25 ;;
         *) return ;;
     esac
