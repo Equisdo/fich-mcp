@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 if os.name != "nt":
     import resource
 
@@ -60,8 +59,16 @@ def main():
         if action == "render":
             sys.stdout.buffer.write(output)
         else:
-            print(json.dumps({"text": output, "status": "ok" if output.strip() else "empty",
-                              "provenance": "ocr", "error": None}))
+            print(
+                json.dumps(
+                    {
+                        "text": output,
+                        "status": "ok" if output.strip() else "empty",
+                        "provenance": "ocr",
+                        "error": None,
+                    }
+                )
+            )
         return
     # Caller owns this private temporary working directory.
     subprocess.run(

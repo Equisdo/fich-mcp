@@ -62,7 +62,7 @@ def test_real_scan_and_mixed(native, tmp_path, monkeypatch):
     assert extract(output, "count")["pages"] == 2
     first = extract(output, "page", 1)
     assert first["provenance"] == "ocr"
-    assert "algebra" in first["text"].lower()
+    assert "course material" in first["text"].lower()
     assert extract(output, "page", 2)["provenance"] == "native"
 
 

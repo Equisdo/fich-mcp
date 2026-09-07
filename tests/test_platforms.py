@@ -16,14 +16,18 @@ def test_writer_cross_process_and_crash_release(tmp_path):
     path = root / "writer.lock"
     code = """
 import sys
+from pathlib import Path
 from fich_mcp.platforms import exclusive_writer
 with exclusive_writer(Path(sys.argv[1])):
     print('ready', flush=True)
     sys.stdin.read()
 """
     process = subprocess.Popen(
-        [sys.executable, "-c", code, str(path)], stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        [sys.executable, "-c", code, str(path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     try:
         assert process.stdout.readline().strip() == "ready"
@@ -62,26 +66,45 @@ assert datetime(2026, 9, 7, tzinfo=TZ).utcoffset() == timedelta(hours=-3)
 
 
 def test_doctor_and_native_menu_subprocess(tmp_path):
-    env = {**os.environ, "XDG_CONFIG_HOME": str(tmp_path / "config"),
-           "XDG_CACHE_HOME": str(tmp_path / "cache"), "PYTHONUTF8": "1"}
+    env = {
+        **os.environ,
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+        "PYTHONUTF8": "1",
+    }
     result = subprocess.run(
-        [sys.executable, "-m", "fich_mcp", "doctor"], env=env,
-        capture_output=True, text=True, check=True, timeout=20,
+        [sys.executable, "-m", "fich_mcp", "doctor"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=20,
     )
     report = json.loads(result.stdout)
     assert report["authentication"] == "authentication_required"
     assert report["fts5"]
     result = subprocess.run(
         [sys.executable, "-c", "from fich_mcp.tui import run; run()"],
-        input="2\n0\n", env=env, capture_output=True, text=True,
-        encoding="utf-8", check=True, timeout=20,
+        input="2\n0\n",
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        timeout=20,
     )
     assert "e-FICH" in result.stdout
     assert '"authentication"' in result.stdout
     if os.name == "nt":
         result = subprocess.run(
-            [sys.executable, "-m", "fich_mcp", "tui"], input="0\n", env=env,
-            capture_output=True, text=True, encoding="utf-8", check=True, timeout=20,
+            [sys.executable, "-m", "fich_mcp", "tui"],
+            input="0\n",
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+            timeout=20,
         )
         assert "by @juanmabdu" in result.stdout
 
@@ -101,12 +124,17 @@ def test_windows_secret_acl_and_unsafe_acl_rejected(tmp_path):
     paths.save(Account("replacement", 1, [], True, True))
     windows_private(paths.account_file)
     acl = security.ACL()
-    acl.AddAccessAllowedAce(security.ACL_REVISION, 0x1F01FF,
-                            security.CreateWellKnownSid(security.WinWorldSid))
+    acl.AddAccessAllowedAce(
+        security.ACL_REVISION, 0x1F01FF, security.CreateWellKnownSid(security.WinWorldSid)
+    )
     security.SetNamedSecurityInfo(
-        str(paths.account_file), security.SE_FILE_OBJECT,
+        str(paths.account_file),
+        security.SE_FILE_OBJECT,
         security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
-        None, None, acl, None,
+        None,
+        None,
+        acl,
+        None,
     )
     with pytest.raises(FichError, match="unsafe_storage"):
         paths.load()
@@ -126,8 +154,9 @@ child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
 print(child.pid, flush=True)
 sys.stdin.read()
 """
-    process = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, text=True)
+    process = subprocess.Popen(
+        [sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+    )
     job = windows_job(process.pid)
     child = None
     try:
@@ -152,6 +181,8 @@ def test_bounded_output_and_timeout():
 
     assert capture([sys.executable, "-c", "print('hello')"]).strip() == b"hello"
     with pytest.raises(ValueError, match="output limit"):
-        capture([sys.executable, "-c", f"import sys; sys.stdout.buffer.write(b'x'*{MAX_OUTPUT + 1})"])
+        capture(
+            [sys.executable, "-c", f"import sys; sys.stdout.buffer.write(b'x'*{MAX_OUTPUT + 1})"]
+        )
     with pytest.raises(subprocess.TimeoutExpired):
         capture([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.1)

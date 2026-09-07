@@ -25,7 +25,9 @@ def _windows_identity():
     import win32con
     import win32security
 
-    with win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY) as token:
+    with win32security.OpenProcessToken(
+        win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
+    ) as token:
         return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
 
 
@@ -38,7 +40,8 @@ def windows_private(path, *, repair=False):
     reject_link(path)
     sid = _windows_identity()
     info = security.GetNamedSecurityInfo(
-        str(path), security.SE_FILE_OBJECT,
+        str(path),
+        security.SE_FILE_OBJECT,
         security.OWNER_SECURITY_INFORMATION | security.DACL_SECURITY_INFORMATION,
     )
     if info.GetSecurityDescriptorOwner() != sid:
@@ -48,12 +51,17 @@ def windows_private(path, *, repair=False):
         acl.AddAccessAllowedAceEx(
             security.ACL_REVISION,
             security.OBJECT_INHERIT_ACE | security.CONTAINER_INHERIT_ACE if path.is_dir() else 0,
-            0x1F01FF, sid,
+            0x1F01FF,
+            sid,
         )
         security.SetNamedSecurityInfo(
-            str(path), security.SE_FILE_OBJECT,
+            str(path),
+            security.SE_FILE_OBJECT,
             security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
-            None, None, acl, None,
+            None,
+            None,
+            acl,
+            None,
         )
         return
     acl = info.GetSecurityDescriptorDacl()
@@ -72,15 +80,19 @@ def exclusive_writer(path):
 
     reject_link(path)
     if os.name == "nt":
+        import pywintypes
         import win32con
         import win32file
-        import pywintypes
 
         try:
             handle = win32file.CreateFile(
-                str(path), win32con.GENERIC_READ | win32con.GENERIC_WRITE,
-                0, None, win32con.OPEN_ALWAYS,
-                win32con.FILE_FLAG_OPEN_REPARSE_POINT, None,
+                str(path),
+                win32con.GENERIC_READ | win32con.GENERIC_WRITE,
+                0,
+                None,
+                win32con.OPEN_ALWAYS,
+                win32con.FILE_FLAG_OPEN_REPARSE_POINT,
+                None,
             )
         except pywintypes.error as exc:
             if exc.winerror == 32:  # ERROR_SHARING_VIOLATION, not an ACL error

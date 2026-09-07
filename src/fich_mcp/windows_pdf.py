@@ -14,8 +14,10 @@ def capture(command, data=None, timeout=8):
     kills external tools if the parent PDF worker is killed by its deadline.
     """
     process = subprocess.Popen(
-        command, stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        command,
+        stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         env={**os.environ, "OMP_THREAD_LIMIT": "1"},
     )
 
@@ -50,14 +52,25 @@ def capture(command, data=None, timeout=8):
 
 
 def render_ocr(path, action, page):
-    image = capture([
-        "pdftoppm", "-f", str(page), "-l", str(page), "-singlefile",
-        "-scale-to", "1800", "-png", path,
-    ])
+    image = capture(
+        [
+            "pdftoppm",
+            "-f",
+            str(page),
+            "-l",
+            str(page),
+            "-singlefile",
+            "-scale-to",
+            "1800",
+            "-png",
+            path,
+        ]
+    )
     if not image.startswith(b"\x89PNG"):
         raise ValueError("invalid image")
     if action == "render":
         return image
     return capture(
-        ["tesseract", "stdin", "stdout", "-l", "spa+eng", "--psm", "3"], image,
+        ["tesseract", "stdin", "stdout", "-l", "spa+eng", "--psm", "3"],
+        image,
     ).decode("utf-8")[:200000]
