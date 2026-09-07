@@ -62,10 +62,21 @@ después de leer y aceptar explícitamente esa advertencia.
 
 ## Capturas
 
-<!-- Pegá acá las capturas del menú guiado y del selector de materias en docs/assets/ -->
 <p align="center">
   <img src="docs/assets/menu.png" alt="Menú guiado de fich-mcp" width="45%">
   <img src="docs/assets/materias.png" alt="Selector de materias" width="45%">
+</p>
+
+### En acción
+
+Tres consultas reales resueltas por MCP, sin entrar al aula virtual: qué preparar para el próximo
+laboratorio de Física, novedades del parcial de Bases de Datos, y carga automática de fechas de examen
+en Google Calendar.
+
+<p align="center">
+  <img src="docs/assets/en-accion-fisica.png" alt="Consulta de la próxima clase de laboratorio de Física por MCP" width="32%">
+  <img src="docs/assets/en-accion-parciales.png" alt="Novedades del parcial de Bases de Datos vía MCP" width="32%">
+  <img src="docs/assets/en-accion-calendar.png" alt="Carga de fechas de examen en Google Calendar combinando FICH MCP y el conector de Calendar" width="32%">
 </p>
 
 ## Requisitos
