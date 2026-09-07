@@ -1,6 +1,5 @@
 """Account-isolated snapshots, resumable indexing, literal FTS, and change history."""
 
-import fcntl
 import hashlib
 import json
 import os
@@ -8,8 +7,8 @@ import re
 import sqlite3
 import time
 import unicodedata
-from contextlib import contextmanager
 
+from .platforms import exclusive_writer, reject_link
 from .security import FichError, private_dir
 
 
@@ -44,11 +43,11 @@ class Store:
     def __init__(self, root):
         self.root = private_dir(root)
         path = root / "cache.sqlite3"
-        if path.is_symlink():
-            raise FichError("unsafe_storage")
+        reject_link(path)
         fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
         os.close(fd)
-        path.chmod(0o600)
+        if os.name != "nt":
+            path.chmod(0o600)
         self.db = sqlite3.connect(path, timeout=0.2)
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
@@ -84,18 +83,8 @@ class Store:
     def close(self):
         self.db.close()
 
-    @contextmanager
     def writer(self):
-        path = self.root / "writer.lock"
-        fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        try:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise FichError("sync_busy") from None
-            yield
-        finally:
-            os.close(fd)
+        return exclusive_writer(self.root / "writer.lock")
 
     def set_courses(self, courses):
         with self.db:

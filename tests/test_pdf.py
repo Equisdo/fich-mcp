@@ -1,7 +1,5 @@
 import io
-import os
 import time
-from pathlib import Path
 
 import pytest
 from reportlab.lib.utils import ImageReader
@@ -54,12 +52,6 @@ def test_ocr_missing(native, monkeypatch):
 
 
 def test_real_scan_and_mixed(native, tmp_path, monkeypatch):
-    runtime = Path(__file__).parents[1] / ".tools" / "ocr" / "runtime" / "usr"
-    monkeypatch.setenv("PATH", os.pathsep.join([str(runtime / "bin"), "/usr/bin"]))
-    monkeypatch.setenv("LD_LIBRARY_PATH", str(runtime / "lib" / "x86_64-linux-gnu"))
-    monkeypatch.setenv(
-        "TESSDATA_PREFIX", str(runtime / "share" / "tesseract-ocr" / "5" / "tessdata")
-    )
     image = render(native, 1)
     output = tmp_path / "mixed.pdf"
     c = canvas.Canvas(str(output))
@@ -343,12 +335,6 @@ def test_verified_empty_pages_are_not_extraction_gaps(tmp_path, monkeypatch):
 
 def test_blank_scanned_page_reports_empty_not_a_gap(tmp_path, monkeypatch):
     """The isolated worker classifies a real blank scan itself, with no error code."""
-    runtime = Path(__file__).parents[1] / ".tools" / "ocr" / "runtime" / "usr"
-    monkeypatch.setenv("PATH", os.pathsep.join([str(runtime / "bin"), "/usr/bin"]))
-    monkeypatch.setenv("LD_LIBRARY_PATH", str(runtime / "lib" / "x86_64-linux-gnu"))
-    monkeypatch.setenv(
-        "TESSDATA_PREFIX", str(runtime / "share" / "tesseract-ocr" / "5" / "tessdata")
-    )
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer)
     c.showPage()

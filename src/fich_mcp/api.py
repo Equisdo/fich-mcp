@@ -28,7 +28,7 @@ def application(paths=None):
 def aliases(paths=None):
     path = (paths or Paths.default()).config / "aliases.toml"
     try:
-        data = tomllib.loads(path.read_text()).get("aliases", {})
+        data = tomllib.loads(path.read_text(encoding="utf-8")).get("aliases", {})
         if not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
             raise FichError("invalid_aliases")
         return data

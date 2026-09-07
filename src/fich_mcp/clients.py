@@ -166,7 +166,7 @@ def configure_claude_desktop(config_path=None):
         if path.is_symlink():
             raise FichError("unsafe_storage")
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise FichError("claude_desktop_inspection_failed") from exc
         if not isinstance(data, dict):

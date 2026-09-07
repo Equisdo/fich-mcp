@@ -13,6 +13,8 @@ from mcp.server.mcpserver import Image
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from .platforms import windows_job
+
 Course = Annotated[str | None, Field(max_length=150)]
 Limit = Annotated[int, Field(ge=1, le=50)]
 Offset = Annotated[int, Field(ge=0, le=1000)]
@@ -28,13 +30,22 @@ def bounded_call(operation, args, timeout=27):
         start_new_session=True,
         text=True,
     )
+    job = None
     try:
+        if os.name == "nt":
+            job = windows_job(process.pid)
         output, _ = process.communicate(
             json.dumps({"operation": operation, "args": args}), timeout=timeout
         )
         return json.loads(output)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
+        if job is not None:
+            job.Close()
+            job = None
+        elif os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
         return {
             "data": [],
@@ -53,8 +64,13 @@ def bounded_call(operation, args, timeout=27):
             "continuation": False,
         }
     finally:
+        if job is not None:
+            job.Close()
         if process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
+            if os.name == "nt":
+                process.kill()
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
             process.wait()
 
 

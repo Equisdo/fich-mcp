@@ -28,11 +28,14 @@ configure_claude = configure_claude_code
 
 
 def launch_tui(execv=os.execvp):
-    """Replace this process with the guided bash menu (scripts/fich-menu.sh)."""
+    """Keep the optional POSIX menu; installed wheels and Windows use Python."""
     script = Path(__file__).resolve().parents[2] / "scripts" / "fich-menu.sh"
-    if not script.is_file():
-        raise FichError("tui_not_found")
-    execv("bash", ["bash", str(script)])
+    if os.name != "nt" and script.is_file() and shutil.which("bash"):
+        execv("bash", ["bash", str(script)])
+    else:
+        from .tui import run
+
+        run()
 
 
 def select_courses(service, paths):
@@ -91,6 +94,9 @@ def doctor(paths):
         "authentication": "authentication_required",
         "fts5": False,
         "ocr": {},
+        "timezone": "America/Argentina/Buenos_Aires",
+        "pdf_native": "windows_job" if os.name == "nt" else "posix_rlimits",
+        "pdf_render_ocr": "available_if_installed",
         "cache": "not_initialized",
     }
     connection = sqlite3.connect(":memory:")

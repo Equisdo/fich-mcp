@@ -143,33 +143,33 @@ fich-mcp doctor
 <details>
 <summary><strong>🪟 Windows</strong></summary>
 
-El menú guiado (`fich-mcp tui`) es un script de bash, así que la vía recomendada es
-**WSL2** — ahí seguís exactamente los pasos de Linux de arriba.
+Windows nativo tiene menú Python incluido: **no necesita WSL, Bash, gum ni Git**
+para instalar una versión publicada como archivo ZIP. Python 3.12 o 3.13 de 64 bits.
 
 ```powershell
-# Instalar WSL2 (una sola vez, PowerShell como administrador)
-wsl --install -d Ubuntu
+winget install --exact --id Python.Python.3.13
 ```
 
-Después de reiniciar, abrí la terminal de Ubuntu y seguí la sección **🐧 Linux**.
-
-**Sin WSL2**, el paquete y el CLI (`init`, `doctor`, `courses`, `sync`, `serve`, `configure`) también
-corren en PowerShell nativo — lo único que no tenés es el menú guiado:
+Cerrá y abrí PowerShell. Luego:
 
 ```powershell
-git clone https://github.com/Equisdo/fich-mcp.git
-cd fich-mcp
-py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e .
-
+python --version
+python -m venv "$env:USERPROFILE\fich-mcp-env"
+& "$env:USERPROFILE\fich-mcp-env\Scripts\python.exe" -m pip install --upgrade pip
+& "$env:USERPROFILE\fich-mcp-env\Scripts\python.exe" -m pip install "https://github.com/Equisdo/fich-mcp/archive/refs/heads/main.zip"
+$env:Path = "$env:USERPROFILE\fich-mcp-env\Scripts;" + $env:Path
 fich-mcp doctor
+fich-mcp tui
 ```
 
-Para OCR en Windows nativo instalá Poppler y Tesseract con
-[winget](https://learn.microsoft.com/windows/package-manager/winget/) o
-[Chocolatey](https://chocolatey.org/) y confirmá que queden en el `PATH` con `fich-mcp doctor`.
+No hace falta activar el venv ni cambiar ExecutionPolicy. `tzdata` y `pywin32`
+se instalan automáticamente. Si `python` abre Microsoft Store, usá
+`& "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe"` en su lugar.
+
+Para otra sesión, repetí la línea `$env:Path = ...` o ejecutá directamente
+`& "$env:USERPROFILE\fich-mcp-env\Scripts\fich-mcp.exe" tui`.
+
+**Guía completa, instalación desde Git y OCR opcional:** [Windows](docs/windows.md).
 
 </details>
 

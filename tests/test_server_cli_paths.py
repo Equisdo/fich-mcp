@@ -29,7 +29,8 @@ def test_server_registration_serve_and_timeout(monkeypatch):
     process.communicate.side_effect = [__import__("subprocess").TimeoutExpired("rpc", 1), ("", "")]
     process.poll.return_value = 0
     monkeypatch.setattr(server.subprocess, "Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr(server.os, "killpg", Mock())
+    monkeypatch.setattr(server.os, "killpg", Mock(), raising=False)
+    monkeypatch.setattr(server, "windows_job", lambda pid: Mock())
     result = server.bounded_call("list_courses", {}, timeout=0.01)
     assert result["errors"] == [{"code": "budget_exhausted"}]
     assert result["continuation"] is True
