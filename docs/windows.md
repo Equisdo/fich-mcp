@@ -107,3 +107,14 @@ incluye extracción nativa, OCR, MCP stdio y configuración de clientes con mock
 El inicio de sesión y la sincronización contra Moodle real requieren credenciales
 y quedan fuera de CI. Consultar la PR para resultados efectivos, no interpretar
 la presencia de un workflow como evidencia de que pasó.
+
+### Limitación preexistente en macOS ARM
+
+El runner macOS 26 ARM rechaza `setrlimit(RLIMIT_AS, 768 MiB)` con
+`ValueError: current limit exceeds maximum limit`. Es la misma llamada del
+extractor original. Se conserva el comportamiento seguro: no procesar el PDF
+si el sistema no admite los límites. Los tests prueban expresamente ese rechazo
+sin salida y omiten solo las integraciones PDF que necesitan dicho límite.
+No se presenta macOS como validado para PDF/OCR en ese entorno. El resto de la
+suite y los comandos doctor/tui se ejecutan normalmente. Linux y Windows no
+omiten las integraciones PDF por esta condición.

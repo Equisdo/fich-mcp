@@ -50,10 +50,6 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
-      - name: Probe macOS PDF limits
-        if: runner.os == 'macOS'
-        run: python -c "from fich_mcp.pdf_worker import apply_limits; apply_limits(); from pypdf import PdfReader; print('PDF limits and parser import OK')"
-
       - name: Test
         run: python -m pytest -q
 

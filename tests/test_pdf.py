@@ -1,13 +1,52 @@
 import io
+import subprocess
+import sys
 import time
 
 import pytest
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
+from fich_mcp import pdf_worker
 from fich_mcp.pdf import Indexer, extract, render
 from fich_mcp.security import FichError
 from fich_mcp.store import Store
+
+
+@pytest.fixture(scope="module")
+def supported_pdf_limits():
+    if sys.platform == "darwin":
+        result = subprocess.run(
+            [sys.executable, "-c", "from fich_mcp.pdf_worker import apply_limits; apply_limits()"],
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode:
+            pytest.skip(
+                "macOS kernel rejects existing RLIMIT_AS; fail-closed behavior tested separately"
+            )
+
+
+def test_unsupported_macos_limits_fail_closed(tmp_path):
+    if sys.platform != "darwin":
+        pytest.skip("macOS resource capability")
+    probe = subprocess.run(
+        [sys.executable, "-c", "from fich_mcp.pdf_worker import apply_limits; apply_limits()"],
+        capture_output=True,
+        timeout=10,
+    )
+    if probe.returncode == 0:
+        pytest.skip("This macOS accepts the PDF resource limits")
+    path = tmp_path / "valid.pdf"
+    path.write_bytes(pdf_bytes())
+    result = subprocess.run(
+        [sys.executable, pdf_worker.__file__, str(path), "count", "1", "0"],
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert result.stderr == b""
 
 
 def pdf_bytes(text="Algebra linear mathematics and differential equations printed course material"):
@@ -25,6 +64,7 @@ def native(tmp_path):
     return p
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_native_and_render(native):
     assert extract(native, "count")["pages"] == 1
     result = extract(native, "page", 1)
@@ -44,6 +84,7 @@ def test_corrupt_and_bounds(tmp_path, native):
         extract(native, "count", timeout=0.00001)
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_ocr_missing(native, monkeypatch):
     monkeypatch.setenv("PATH", "/nonexistent")
     result = extract(native, "page", 1, force=True)
@@ -51,6 +92,7 @@ def test_ocr_missing(native, monkeypatch):
     assert result["status"] == "gap"
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_real_scan_and_mixed(native, tmp_path, monkeypatch):
     image = render(native, 1)
     output = tmp_path / "mixed.pdf"
@@ -66,6 +108,7 @@ def test_real_scan_and_mixed(native, tmp_path, monkeypatch):
     assert extract(output, "page", 2)["provenance"] == "native"
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_index_resume_and_download_failure(tmp_path):
     store = Store(tmp_path / "cache")
     store.set_courses([{"id": 1, "fullname": "A", "shortname": "A"}])
@@ -133,6 +176,7 @@ def indexed_store(tmp_path, document=b""):
     return store, Remote()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_batch_deadline_defers_work_instead_of_recording_gaps(tmp_path, monkeypatch):
     """A worker is never started on a remainder of the budget, and nothing is failed for it."""
     from fich_mcp import pdf
@@ -195,6 +239,7 @@ def test_exhausted_download_budget_keeps_the_job_pending(tmp_path):
     store.close()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_force_refresh_retries_only_failed_pages(tmp_path, monkeypatch):
     """An unchanged partial document retries its gaps and keeps its healthy pages."""
     from fich_mcp import pdf
@@ -233,6 +278,7 @@ def test_force_refresh_retries_only_failed_pages(tmp_path, monkeypatch):
     store.close()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_interrupted_retry_resumes_without_reprocessing_healthy_pages(tmp_path, monkeypatch):
     """A retry cut by the deadline keeps its remaining failed pages, not a finished cursor."""
     from fich_mcp import pdf
@@ -276,6 +322,7 @@ def test_interrupted_retry_resumes_without_reprocessing_healthy_pages(tmp_path, 
     store.close()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_force_refresh_retries_a_document_that_never_reached_a_page_count(tmp_path):
     """A document failed before its page count is pending work, not a finished job."""
     store, remote = indexed_store(tmp_path, two_page_pdf())
@@ -333,6 +380,7 @@ def test_verified_empty_pages_are_not_extraction_gaps(tmp_path, monkeypatch):
     store.close()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_blank_scanned_page_reports_empty_not_a_gap(tmp_path, monkeypatch):
     """The isolated worker classifies a real blank scan itself, with no error code."""
     buffer = io.BytesIO()
@@ -388,6 +436,7 @@ def test_slow_download_defers_page_counting(tmp_path, monkeypatch):
     store.close()
 
 
+@pytest.mark.usefixtures("supported_pdf_limits")
 def test_force_refresh_keeps_a_healthy_document_complete(tmp_path, monkeypatch):
     """An unchanged, fully extracted document is restored, never re-extracted page by page."""
     from fich_mcp import pdf
