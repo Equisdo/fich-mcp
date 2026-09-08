@@ -13,50 +13,42 @@ from fich_mcp.clients import (
 from fich_mcp.security import FichError
 
 
-def test_configure_codex_add(monkeypatch):
+def test_configure_codex_installs_default_plugin(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: "/bin/" + name)
-    run = Mock(
-        side_effect=[
-            Mock(returncode=0, stdout="[]", stderr=""),
-            Mock(returncode=0, stdout="", stderr=""),
-        ]
-    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    run = Mock(return_value=Mock(returncode=0, stdout="", stderr=""))
+
     assert configure_codex(run) == "configured"
-    assert run.call_args_list[0].args[0] == ["/bin/codex", "mcp", "list", "--json"]
-    assert run.call_args_list[1].args[0] == [
-        "/bin/codex",
-        "mcp",
-        "add",
-        "fich",
-        "--",
-        "/bin/fich-mcp",
-        "serve",
-    ]
+    assert run.call_args.args[0] == ["/bin/codex", "plugin", "add", "fich@personal"]
+
+    plugin = tmp_path / "plugins" / "fich"
+    assert json.loads((plugin / ".codex-plugin" / "plugin.json").read_text())["name"] == "fich"
+    assert json.loads((plugin / ".mcp.json").read_text())["mcpServers"]["fich"] == {
+        "command": "/bin/fich-mcp", "args": ["serve"]
+    }
+    marketplace = json.loads((tmp_path / ".agents" / "plugins" / "marketplace.json").read_text())
+    assert marketplace["plugins"][0]["source"] == {"source": "local", "path": "./plugins/fich"}
 
 
-def test_configure_codex_already_configured(monkeypatch):
+def test_configure_codex_plugin_is_idempotent(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: "/bin/" + name)
-    listing = json.dumps(
-        [
-            {
-                "name": "fich",
-                "transport": {"type": "stdio", "command": "/bin/fich-mcp", "args": ["serve"]},
-            }
-        ]
-    )
-    run = Mock(return_value=Mock(returncode=0, stdout=listing, stderr=""))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    run = Mock(return_value=Mock(returncode=0, stdout="", stderr=""))
+
+    assert configure_codex(run) == "configured"
     assert configure_codex(run) == "already_configured"
-    assert run.call_count == 1
+    assert run.call_count == 2
 
 
-def test_configure_codex_conflict(monkeypatch):
+def test_configure_codex_plugin_conflict(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: "/bin/" + name)
-    listing = json.dumps(
-        [{"name": "fich", "transport": {"type": "stdio", "command": "/evil", "args": ["serve"]}}]
-    )
-    run = Mock(return_value=Mock(returncode=0, stdout=listing, stderr=""))
-    with pytest.raises(FichError, match="codex_configuration_conflict"):
-        configure_codex(run)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    manifest = tmp_path / "plugins" / "fich" / ".codex-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"name": "fich", "description": "foreign"}))
+
+    with pytest.raises(FichError, match="codex_plugin_conflict"):
+        configure_codex(Mock())
 
 
 def test_configure_codex_missing_executable(monkeypatch):
@@ -127,7 +119,7 @@ def test_configure_all_collects_per_client_status(monkeypatch, tmp_path):
     results = configure_all(claude_run=claude_run, codex_run=codex_run, desktop_path=desktop_path)
 
     assert results["claude_code"] == "configured"
-    assert results["codex"] == "codex_inspection_failed"
+    assert results["codex"] == "codex_plugin_installation_failed"
     assert results["claude_desktop"] == "configured"
 
 

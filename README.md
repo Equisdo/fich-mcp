@@ -67,6 +67,15 @@ después de leer y aceptar explícitamente esa advertencia.
   <img src="docs/assets/materias.png" alt="Selector de materias" width="45%">
 </p>
 
+### Integraciones locales
+
+FICH aparece como integración local en Claude y como complemento local en Codex/ChatGPT desktop.
+
+<p align="center">
+  <img src="docs/assets/plugin-claude.png" alt="FICH habilitado como conector local en Claude" width="45%">
+  <img src="docs/assets/plugin-chatgpt.png" alt="FICH disponible como complemento local en Codex y ChatGPT desktop" width="45%">
+</p>
+
 ### En acción
 
 Tres consultas reales resueltas por MCP, sin entrar al aula virtual: qué preparar para el próximo
@@ -256,15 +265,14 @@ cuenta, nunca en un archivo de config de cliente.
 
 ```bash
 fich-mcp configure claude           # Claude Code (alcance de usuario, vía el CLI `claude`)
-fich-mcp configure codex            # ChatGPT desktop + Codex CLI + extensión de Codex para IDE
-                                     #   (comparten ~/.codex/config.toml)
+fich-mcp configure codex            # instala FICH como complemento local de Codex/ChatGPT desktop
 fich-mcp configure claude-desktop   # Claude Desktop (mergea claude_desktop_config.json)
 fich-mcp configure all              # los tres de una; que falle uno no bloquea a los demás
 ```
 
-Cada uno es idempotente y no pisa nada ajeno: si volvés a correrlo imprime `already_configured` cuando
-la entrada ya apunta a este ejecutable, y se niega (`*_configuration_conflict`) en vez de sobrescribir
-una entrada `fich` que apunte a otra cosa. Reiniciá el cliente después para que tome el servidor nuevo.
+La instalación de Codex es la vía predeterminada: crea e instala el complemento local **FICH** en tu marketplace personal. Así aparece en el selector **+ → Complementos**, igual que otros complementos locales, y el propio complemento inicia `fich-mcp serve`. No pide IDs, workspace ni configuración web.
+
+Cada instalación es idempotente y no pisa nada ajeno: si volvés a correrla imprime `already_configured`; se niega (`*_configuration_conflict`) ante una entrada local de FICH que no reconoce. Abrí un chat nuevo o reiniciá Codex para que recargue el selector.
 
 `claude-desktop` detecta solo la ubicación de `claude_desktop_config.json` según tu sistema operativo:
 

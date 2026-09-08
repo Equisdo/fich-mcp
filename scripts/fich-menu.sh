@@ -341,7 +341,7 @@ accion_cliente() {
     local cliente
     cliente="$(ui_menu "¿Dónde querés usar e-FICH?" \
         "Claude Code — registro automático" \
-        "ChatGPT desktop / Codex CLI — registro automático" \
+        "Codex / ChatGPT desktop — complemento local automático" \
         "Claude Desktop — registro automático" \
         "Los tres — registro automático" \
         "Otro cliente — configuración manual" \
@@ -349,7 +349,7 @@ accion_cliente() {
     local objetivo=""
     case "$cliente" in
         "Claude Code"*)   objetivo="claude" ;;
-        "ChatGPT desktop"*) objetivo="codex" ;;
+        "Codex / ChatGPT desktop"*) objetivo="codex" ;;
         "Claude Desktop"*) objetivo="claude-desktop" ;;
         "Los tres"*)      objetivo="all" ;;
     esac
@@ -368,8 +368,8 @@ accion_cliente() {
                 ;;
             *)
                 case "$salida" in
-                    configured)         ok "✓ Registrado." ;;
-                    already_configured) ok "✓ Ya estaba registrado y apunta al ejecutable correcto." ;;
+                    configured)         ok "✓ Complemento FICH instalado." ;;
+                    already_configured) ok "✓ El complemento FICH ya estaba instalado." ;;
                     *)                  err "No se pudo registrar: $salida" ;;
                 esac
                 ;;
