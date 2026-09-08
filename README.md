@@ -143,8 +143,10 @@ fich-mcp doctor
 <details>
 <summary><strong>🪟 Windows</strong></summary>
 
-Windows nativo tiene menú Python incluido: **no necesita WSL, Bash, gum ni Git**
-para instalar una versión publicada como archivo ZIP. Python 3.12 o 3.13 de 64 bits.
+Windows nativo incluye el mismo menú guiado de las demás plataformas: banner,
+colores, navegación con flechas, selector múltiple de materias y configuración de
+clientes. **No necesita WSL, Bash, gum ni Git** para instalar una versión publicada
+como archivo ZIP. Python 3.12 o 3.13 de 64 bits.
 
 ```powershell
 winget install --exact --id Python.Python.3.13

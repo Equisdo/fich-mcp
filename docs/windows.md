@@ -39,8 +39,9 @@ Si no resuelve Git, comprobar `& 'C:\Program Files\Git\cmd\git.exe' --version`.
 No instalar paquetes en otro Python: usar siempre el Python del venv con `-m pip`.
 
 Sin login, doctor debe devolver JSON con `authentication_required`, no un
-traceback. El menú permite iniciar sesión, seleccionar materias, sincronizar y
-configurar clientes. Las credenciales se solicitan solamente en `init`.
+traceback. El menú tiene el mismo banner y flujo guiado que en POSIX, con flechas,
+selección múltiple de materias, sincronización y configuración de clientes. Las
+credenciales se solicitan solamente en `init`.
 `configure` necesita que el cliente correspondiente esté instalado y en PATH.
 
 ## OCR opcional
