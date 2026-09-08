@@ -85,7 +85,7 @@ def test_doctor_and_native_menu_subprocess(tmp_path):
     assert report["fts5"]
     result = subprocess.run(
         [sys.executable, "-c", "from fich_mcp.tui import run; run()"],
-        input="2\n0\n",
+        input="7\n8\n",
         env=env,
         capture_output=True,
         text=True,
@@ -94,11 +94,12 @@ def test_doctor_and_native_menu_subprocess(tmp_path):
         timeout=20,
     )
     assert "e-FICH" in result.stdout
+    assert "Instalación guiada" in result.stdout
     assert '"authentication"' in result.stdout
     if os.name == "nt":
         result = subprocess.run(
             [sys.executable, "-m", "fich_mcp", "tui"],
-            input="0\n",
+            input="8\n",
             env=env,
             capture_output=True,
             text=True,
